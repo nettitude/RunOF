@@ -44,12 +44,14 @@ namespace RunBOF.Internals
         // This can also be called directly for functions where you already know the address (e.g. helper functions)
         public void Add(string dll_name, string func_name, IntPtr func_address)
         {
-            Console.WriteLine($"[*] Adding {dll_name+ "$" + func_name} at address {func_address}");
 #if _I386
+            Console.WriteLine($"[*] Adding {dll_name+ "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 4):X}");
             Marshal.WriteInt32(this.iat_addr + (this.iat_count * 4), func_address.ToInt32());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 4));
 
 #elif _AMD64
+            Console.WriteLine($"[*] Adding {dll_name + "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 8):X}");
+
             Marshal.WriteInt64(this.iat_addr + (this.iat_count * 8), func_address.ToInt64());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 8));
 

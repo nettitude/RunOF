@@ -118,10 +118,12 @@ namespace RunBOF.Internals
                 throw new NotImplementedException();
             }
 
+            // Compilers use different prefixes to symbols depending on architecture. 
+            // There might be other naming conventions for functions imported in different ways, but I'm not sure.
             if (this.BofArch == ARCH.I386)
             {
                 this.ImportPrefix = "__imp__";
-                this.HelperPrefix = "_";
+                this.HelperPrefix = "_"; // This I think means a global function
                 this.EntrySymbol = "_go";
             }
             else if (this.BofArch == ARCH.AMD64)
@@ -157,10 +159,11 @@ namespace RunBOF.Internals
         public void ResolveHelpers()
         {
             Console.WriteLine("[*] Looking for beacon helper functions");
-
+            bool global_buffer_found = false;
+            bool global_buffer_maxlen_found = false;
             foreach (var symbol in this.symbols) 
             {
-                var symbol_name = GetSymbolName(symbol);                
+                var symbol_name = GetSymbolName(symbol);
                 if ((symbol_name.StartsWith(this.HelperPrefix+"Beacon") || symbol_name.StartsWith(this.HelperPrefix + "toWideChar")) && symbol.Type == IMAGE_SYMBOL_TYPE.IMAGE_SYM_TYPE_FUNC)
                 {
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
@@ -169,12 +172,12 @@ namespace RunBOF.Internals
                     //Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
                     this.iat.Add(this.InternalDLLName, symbol_name.Replace("_", string.Empty), symbol_addr);
                 }
-                else if (symbol_name == "_global_buffer")
+                else if (symbol_name == this.HelperPrefix+"global_buffer")
                 {
                     if (this.global_buffer == IntPtr.Zero)
                     {
                         this.global_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, this.global_buffer_size, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
-                        Console.WriteLine($"[*] Allocated a {this.global_buffer_size} bytes global buffer @ {this.global_buffer.ToInt32():X}");
+                        Console.WriteLine($"[*] Allocated a {this.global_buffer_size} bytes global buffer @ {this.global_buffer.ToInt64():X}");
                     }
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
 
@@ -182,17 +185,24 @@ namespace RunBOF.Internals
                   //  Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
                     // write the address of the global buffer we allocated
                     Marshal.WriteIntPtr(symbol_addr, this.global_buffer);
+                    global_buffer_found = true;
                    // Console.WriteLine($"Val at addr: {Marshal.ReadInt32(symbol_addr):X}");
                 }
-                else if (symbol_name == "_global_buffer_maxlen")
+                else if (symbol_name == this.HelperPrefix+"global_buffer_maxlen")
                 {
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
                     // write the maximum size of the buffer TODO - this shouldn't be hardcoded
-                  //  Console.WriteLine("Found maxlen");
-                  //  Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
+                    //Console.WriteLine("Found maxlen");
+                    //Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
+                    // CAUTION - the sizeo of what you write here MUST match the definition in beacon_funcs.h for global_buffer_maxlen (currently a uint32_t)
                     Marshal.WriteInt32(symbol_addr, 1024);
+                    global_buffer_maxlen_found = true;
+
                 }
+
             }
+            if (!global_buffer_found || !global_buffer_maxlen_found) throw new Exception($"Unable to find global_buffer_maxlen or global_buffer symbols in your helper object: global_buffer: {global_buffer_found} global_buffer_maxlen: {global_buffer_maxlen_found}");
+
 
         }
 
@@ -272,7 +282,7 @@ namespace RunBOF.Internals
                     var struct_bytes = reader.ReadBytes(Marshal.SizeOf(typeof(IMAGE_RELOCATION)));
 
                     IMAGE_RELOCATION reloc = Deserialize<IMAGE_RELOCATION>(struct_bytes);
-                   // Console.WriteLine($"\t[*] Got reloc info: {reloc.VirtualAddress:X} - {reloc.SymbolTableIndex:X} - {reloc.Type:X}");
+                    Console.WriteLine($"\t[*] Got reloc info: {reloc.VirtualAddress:X} - {reloc.SymbolTableIndex:X} - {reloc.Type} - @ { (this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress).ToInt64():X}");
                     if ((int)reloc.SymbolTableIndex > this.symbols.Count || (int)reloc.SymbolTableIndex < 0)
                     {
                         throw new Exception($"Unable to parse relocation # {i+1} symbol table index - {reloc.SymbolTableIndex}");
@@ -283,25 +293,22 @@ namespace RunBOF.Internals
                     if (reloc_symbol.SectionNumber == IMAGE_SECTION_NUMBER.IMAGE_SYM_UNDEFINED)
                     {
 
-                        if (symbol_name.StartsWith(this.ImportPrefix+"Beacon") || symbol_name.StartsWith(this.ImportPrefix+"toWideChar"))
+                        IntPtr func_addr;
+
+                        if (symbol_name.StartsWith(this.ImportPrefix + "Beacon") || symbol_name.StartsWith(this.ImportPrefix + "toWideChar"))
                         {
                             Console.WriteLine("\t[*] We need to provide this function");
                             // so we need to have an unmanaged function somewhere and a pointer to that function
                             // We then need to write the address of that pointer to this location
+
                             var func_name = symbol_name.Replace(this.ImportPrefix, String.Empty);
-
-                                IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
-#if _I386
-                            Marshal.WriteInt32(reloc_location, this.iat.Resolve(this.InternalDLLName, func_name).ToInt32()); // TODO architecture depends
-#elif _AMD64
-                            Marshal.WriteInt64(reloc_location, this.iat.Resolve(this.InternalDLLName, func_name).ToInt64()); // TODO architecture depends
-#endif
-                            Console.WriteLine($"\t[*] Write relocation to {reloc_location.ToInt64():X}");
-
+                            func_addr = this.iat.Resolve(this.InternalDLLName, func_name);
 
                         } else
                         {
                             // This is a win32 api function
+                            Console.WriteLine("Win32API function");
+
                             string[] symbol_parts = symbol_name.Replace(this.ImportPrefix, "").Split('$');
 
                             string dll_name;
@@ -309,30 +316,85 @@ namespace RunBOF.Internals
                             try
                             {
                                 dll_name = symbol_parts[0];
-                                func_name = symbol_parts[1].Split('@')[0];
+                                func_name = symbol_parts[1].Split('@')[0]; // some compilers emit the number of bytes in the param list after the fn name
                             } catch (Exception e)
                             {
-                                throw new Exception($"Unable to parse function name {symbol_name} while processing relocations");
+                                throw new Exception($"Unable to parse function name {symbol_name} while processing relocations - {e}");
                             }
 
+                            func_addr = this.iat.Resolve(dll_name, func_name);
 
-                            // write our address to the relocation
-                            IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
-                            Console.WriteLine($"\t[*] Writing relocation to {reloc_location.ToInt64():X}");
-#if _I386
-                            Marshal.WriteInt32(reloc_location, this.iat.Resolve(dll_name, func_name).ToInt32());
-#elif _AMD64
-                            Marshal.WriteInt64(reloc_location, this.iat.Resolve(dll_name, func_name).ToInt64());
-
-#endif
                         }
 
-                    } else
+                        // write our address to the relocation
+                        IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
+                        Int64 current_value = Marshal.ReadInt32(reloc_location);
+                        Console.WriteLine($"Current value: {current_value:X}");
+                        // How we write our relocation depends on the relocation type and architecture
+                        // Note - "in the wild" most of these are not used, which makes it a bit difficult to test. 
+                        // For example, in all the BOF files I've seen only four are actually used. 
+                        // An exception will be thrown if not supported
+                        // TODO - we might refactor this, but for now it feels clearest to have two switch statements. 
+                        switch (reloc.Type)
+                        {
+#if _I386
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_ABSOLUTE:
+                                // The relocation is ignored
+                                break;
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR16:
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_REL16:
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SEG12:
+                                // The relocation is not supported;
+                                break;
+
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32:
+                                // The target's 32-bit VA.
+
+                                Marshal.WriteInt32(reloc_location, func_addr.ToInt32());
+                                break;
+
+
+
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_REL32:
+                                // TODO - not seen this "in the wild"
+                                Marshal.WriteInt32(reloc_location, (func_addr.ToInt32()-4) - reloc_location.ToInt32());
+                                break;
+
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32NB:
+                                // The target's 32-bit RVA.
+                                Marshal.WriteInt32(reloc_location, (func_addr.ToInt32() - 4) - reloc_location.ToInt32() - this.base_addr.ToInt32());
+                                break;
+
+                            // These relocations will fall through as unhandled for now
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECTION:
+                            // The 16-bit section index of the section that contains the target. This is used to support debugging information.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL:
+                            // The 32-bit offset of the target from the beginning of its section. This is used to support debugging information and static thread local storage.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_TOKEN:
+                            // The CLR token.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL7:
+                            // A 7-bit offset from the base of the section that contains the target.
+
+
+#elif _AMD64
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32:
+                                Marshal.WriteInt32(reloc_location, (int)((func_addr.ToInt64()-4) - (reloc_location.ToInt64()))); // subtract the size of the relocation (relative to the end of the reloc)
+                                break;
+
+#endif
+                            default:
+                                throw new Exception($"Unable to process function relocation type {reloc.Type} - please file a bug report.");
+                    }
+                        Console.WriteLine($"\t[*] Write relocation to {reloc_location.ToInt64():X}");
+
+                    }
+                    else
                     {
                         Console.WriteLine("\t[*] Resolving internal reference");
                         IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
 #if _I386
                         Int32 current_value = Marshal.ReadInt32(reloc_location);
+                        Int32 object_addr;
 #elif _AMD64
                         Int64 current_value = Marshal.ReadInt64(reloc_location);
                         Int32 current_value_32 = Marshal.ReadInt32(reloc_location);
@@ -352,40 +414,101 @@ namespace RunBOF.Internals
 
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32:
                                 // The target's 32-bit VA
-                                Console.WriteLine("\t\t[*] DIR32");
                                 Marshal.WriteInt32(reloc_location, current_value + this.base_addr.ToInt32() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData);
-
                                 break;
 
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_REL32:
                                 // The target's 32-bit RVA
-                                Console.WriteLine("\t\t[*] REL32");
-                                // THIS IS NOT RIGHT?
-                                Marshal.WriteInt32(reloc_location, current_value + this.base_addr.ToInt32() + (int)this.section_headers[(int)reloc_symbol.SectionNumber-1].PointerToRawData);
+                                object_addr = current_value + this.base_addr.ToInt32() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (object_addr-4) - reloc_location.ToInt32() );
                                 break;
+
+
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32NB:
+                                // The target's 32-bit RVA.
+                                object_addr = current_value + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (object_addr - 4) - reloc_location.ToInt32());
+                                break;
+
+                            // These relocations will fall through as unhandled for now
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECTION:
+                            // The 16-bit section index of the section that contains the target. This is used to support debugging information.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL:
+                            // The 32-bit offset of the target from the beginning of its section. This is used to support debugging information and static thread local storage.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_TOKEN:
+                            // The CLR token.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL7:
+                            // A 7-bit offset from the base of the section that contains the target.
 #elif _AMD64
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_ABSOLUTE:
                                 // The relocation is ignored
                                 break;
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_ADDR64:
-                                // The 64-bit VA of the target
+                                // The 64-bit VA of the relocation target.
                                 Marshal.WriteInt64(reloc_location, current_value + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData);
                                 break;
-                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32:
-                                // relative addressing
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_ADDR32:
+                                // The 32-bit VA of the relocation target.
+                                // TODO how does this not overflow?
                                 object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
-                                Marshal.WriteInt32(reloc_location, (int)(object_addr - reloc_location.ToInt64()) );
-
+                                Marshal.WriteInt32(reloc_location, (int)(object_addr));
                                 break;
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_ADDR32NB:
-                                // relative addressing with no base address
+                                // The 32-bit address without an image base (RVA).
                                 object_addr = current_value_32 + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
                                 Marshal.WriteInt32(reloc_location, (int)(object_addr - reloc_location.ToInt64()));
                                 break;
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32:
+                                // The 32-bit relative address from the byte following the relocation.
+                                object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (int)((object_addr - 4) - (reloc_location.ToInt64()))); // subtract the size of the relocation
+                                break;
+                                //_1 through _5 written from the spec, not seen in the wild to test
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32_1:
+                                // The 32-bit address relative to byte distance 1 from the relocation.
+                                object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (int)((object_addr - 3) - (reloc_location.ToInt64()))); // subtract the size of the relocation
+                                break;
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32_2:
+                                // The 32-bit address relative to byte distance 2 from the relocation.
+                                object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (int)((object_addr - 2) - (reloc_location.ToInt64()))); // subtract the size of the relocation
+                                break;
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32_3:
+                                // The 32-bit address relative to byte distance 3 from the relocation.
+                                object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (int)((object_addr - 1) - (reloc_location.ToInt64()))); // subtract the size of the relocation
+                                break;
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32_4:
+                                // The 32-bit address relative to byte distance 4 from the relocation.
+                                object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (int)((object_addr) - (reloc_location.ToInt64()))); // subtract the size of the relocation
+                                break;
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32_5:
+                                // The 32-bit address relative to byte distance 5 from the relocation.
+                                object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (int)((object_addr + 1) - (reloc_location.ToInt64()))); // subtract the size of the relocation
+                                break;
+                            // These feel like they're unlikely to be used. I've never seen them, and some of them don't make a lot of sense in the context of what we're doing.
+                            // Ghidra/IDA don't implement all of these either
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_SECTION:
+                                // The 16-bit section index of the section that contains the target. This is used to support debugging information.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_SECREL:
+                                // The 32-bit offset of the target from the beginning of its section. This is used to support debugging information and static thread local storage.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_SECREL7:
+                                // A 7-bit unsigned offset from the base of the section that contains the target.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_TOKEN:
+                                // CLR tokens.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_SREL32:
+                                // A 32-bit signed span-dependent value emitted into the object.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_PAIR:
+                                // A pair that must immediately follow every span-dependent value.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_SSPAN32:
+                                // A 32-bit signed span-dependent value that is applied at link time.
 #endif
 
                             default:
-                                throw new Exception($"Unhandled relocation type {reloc.Type}");
+                                throw new Exception($"Unhandled relocation type {reloc.Type} - please file a bug report");
 
                         }
                     }   

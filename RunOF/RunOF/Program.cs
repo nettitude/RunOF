@@ -29,11 +29,14 @@ namespace RunBOF
             try
             {
                 BofRunner bof_runner = new BofRunner();
-              //  bof_runner.LoadBof(filename);
+                //  bof_runner.LoadBof(filename);
 
-
-                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x86.o");
-                Console.WriteLine("[*] Press enter to start it...");
+#if _I386
+                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\uptime\uptime.x86.o");
+#elif _AMD64
+                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x64.o");
+#endif
+                Console.WriteLine("[*] Press enter to start it (✂️ attach debugger here...)");
                 Console.ReadLine();
 
                 var output = bof_runner.RunBof(30);
