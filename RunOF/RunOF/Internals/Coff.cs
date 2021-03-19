@@ -333,15 +333,18 @@ namespace RunBOF.Internals
                         switch (reloc.Type)
                         {
 #if _I386
-                        Marshal.WriteInt32(reloc_location, func_addr.ToInt32()); 
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32:
+                                Marshal.WriteInt32(reloc_location, func_addr.ToInt32());
+                                break;
 #elif _AMD64
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32:
                                 Marshal.WriteInt32(reloc_location, (int)(func_addr.ToInt64() - (reloc_location.ToInt64() + 4))); // subtract the size of the relocation (relative to the end of the reloc)
                                 break;
-                            default:
-                                throw new Exception($"Unable to process function relocation type {reloc.Type}");
+
 #endif
-                        }
+                        default:
+                                throw new Exception($"Unable to process function relocation type {reloc.Type}");
+                    }
                         Console.WriteLine($"\t[*] Write relocation to {reloc_location.ToInt64():X}");
 
                     }
@@ -351,6 +354,7 @@ namespace RunBOF.Internals
                         IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
 #if _I386
                         Int32 current_value = Marshal.ReadInt32(reloc_location);
+                        Int32 object_addr;
 #elif _AMD64
                         Int64 current_value = Marshal.ReadInt64(reloc_location);
                         Int32 current_value_32 = Marshal.ReadInt32(reloc_location);
@@ -379,7 +383,8 @@ namespace RunBOF.Internals
                                 // The target's 32-bit RVA
                                 Console.WriteLine("\t\t[*] REL32");
                                 // THIS IS NOT RIGHT?
-                                Marshal.WriteInt32(reloc_location, current_value + this.base_addr.ToInt32() + (int)this.section_headers[(int)reloc_symbol.SectionNumber-1].PointerToRawData);
+                                object_addr = current_value + this.base_addr.ToInt32() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (object_addr-4) - reloc_location.ToInt32() );
                                 break;
 #elif _AMD64
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_ABSOLUTE:
@@ -392,7 +397,7 @@ namespace RunBOF.Internals
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32:
                                 // relative addressing
                                 object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
-                                Marshal.WriteInt32(reloc_location, (int)((object_addr-4) - (reloc_location.ToInt64())) );
+                                Marshal.WriteInt32(reloc_location, (int)((object_addr-4) - (reloc_location.ToInt64())) ); // subtract the size of the relocation
 
                                 break;
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_ADDR32NB:
