@@ -300,6 +300,7 @@ namespace RunBOF.Internals
                             Console.WriteLine("\t[*] We need to provide this function");
                             // so we need to have an unmanaged function somewhere and a pointer to that function
                             // We then need to write the address of that pointer to this location
+
                             var func_name = symbol_name.Replace(this.ImportPrefix, String.Empty);
                             func_addr = this.iat.Resolve(this.InternalDLLName, func_name);
 
@@ -330,6 +331,9 @@ namespace RunBOF.Internals
                         Int64 current_value = Marshal.ReadInt32(reloc_location);
                         Console.WriteLine($"Current value: {current_value:X}");
                         // How we write our relocation depends on the relocation type and architecture
+                        // Note - "in the wild" most of these are not used, which makes it a bit difficult to test. 
+                        // For example, in all the BOF files I've seen only four are actually used. 
+                        // An exception will be thrown if not supported
                         // TODO - we might refactor this, but for now it feels clearest to have two switch statements. 
                         switch (reloc.Type)
                         {
@@ -344,13 +348,33 @@ namespace RunBOF.Internals
                                 break;
 
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32:
+                                // The target's 32-bit VA.
+
                                 Marshal.WriteInt32(reloc_location, func_addr.ToInt32());
                                 break;
+
+
 
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_REL32:
                                 // TODO - not seen this "in the wild"
                                 Marshal.WriteInt32(reloc_location, (func_addr.ToInt32()-4) - reloc_location.ToInt32());
                                 break;
+
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32NB:
+                                // The target's 32-bit RVA.
+                                Marshal.WriteInt32(reloc_location, (func_addr.ToInt32() - 4) - reloc_location.ToInt32() - this.base_addr.ToInt32());
+                                break;
+
+                            // These relocations will fall through as unhandled for now
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECTION:
+                            // The 16-bit section index of the section that contains the target. This is used to support debugging information.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL:
+                            // The 32-bit offset of the target from the beginning of its section. This is used to support debugging information and static thread local storage.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_TOKEN:
+                            // The CLR token.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL7:
+                            // A 7-bit offset from the base of the section that contains the target.
+
 
 #elif _AMD64
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32:
@@ -359,7 +383,7 @@ namespace RunBOF.Internals
 
 #endif
                             default:
-                                throw new Exception($"Unable to process function relocation type {reloc.Type}");
+                                throw new Exception($"Unable to process function relocation type {reloc.Type} - please file a bug report.");
                     }
                         Console.WriteLine($"\t[*] Write relocation to {reloc_location.ToInt64():X}");
 
@@ -390,18 +414,31 @@ namespace RunBOF.Internals
 
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32:
                                 // The target's 32-bit VA
-                                Console.WriteLine("\t\t[*] DIR32");
                                 Marshal.WriteInt32(reloc_location, current_value + this.base_addr.ToInt32() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData);
-
                                 break;
 
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_REL32:
                                 // The target's 32-bit RVA
-                                Console.WriteLine("\t\t[*] REL32");
-                                // THIS IS NOT RIGHT?
                                 object_addr = current_value + this.base_addr.ToInt32() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
                                 Marshal.WriteInt32(reloc_location, (object_addr-4) - reloc_location.ToInt32() );
                                 break;
+
+
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_DIR32NB:
+                                // The target's 32-bit RVA.
+                                object_addr = current_value + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
+                                Marshal.WriteInt32(reloc_location, (object_addr - 4) - reloc_location.ToInt32());
+                                break;
+
+                            // These relocations will fall through as unhandled for now
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECTION:
+                            // The 16-bit section index of the section that contains the target. This is used to support debugging information.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL:
+                            // The 32-bit offset of the target from the beginning of its section. This is used to support debugging information and static thread local storage.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_TOKEN:
+                            // The CLR token.
+                            case IMAGE_RELOCATION_TYPE.IMAGE_REL_I386_SECREL7:
+                            // A 7-bit offset from the base of the section that contains the target.
 #elif _AMD64
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_ABSOLUTE:
                                 // The relocation is ignored
@@ -426,6 +463,7 @@ namespace RunBOF.Internals
                                 object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
                                 Marshal.WriteInt32(reloc_location, (int)((object_addr - 4) - (reloc_location.ToInt64()))); // subtract the size of the relocation
                                 break;
+                                //_1 through _5 written from the spec, not seen in the wild to test
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_REL32_1:
                                 // The 32-bit address relative to byte distance 1 from the relocation.
                                 object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
@@ -451,6 +489,8 @@ namespace RunBOF.Internals
                                 object_addr = current_value_32 + this.base_addr.ToInt64() + (int)this.section_headers[(int)reloc_symbol.SectionNumber - 1].PointerToRawData;
                                 Marshal.WriteInt32(reloc_location, (int)((object_addr + 1) - (reloc_location.ToInt64()))); // subtract the size of the relocation
                                 break;
+                            // These feel like they're unlikely to be used. I've never seen them, and some of them don't make a lot of sense in the context of what we're doing.
+                            // Ghidra/IDA don't implement all of these either
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_SECTION:
                                 // The 16-bit section index of the section that contains the target. This is used to support debugging information.
                             case IMAGE_RELOCATION_TYPE.IMAGE_REL_AMD64_SECREL:
@@ -468,7 +508,7 @@ namespace RunBOF.Internals
 #endif
 
                             default:
-                                throw new Exception($"Unhandled relocation type {reloc.Type}");
+                                throw new Exception($"Unhandled relocation type {reloc.Type} - please file a bug report");
 
                         }
                     }   
