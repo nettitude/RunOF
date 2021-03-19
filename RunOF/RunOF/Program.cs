@@ -32,8 +32,8 @@ namespace RunBOF
               //  bof_runner.LoadBof(filename);
 
 
-                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x86.o");
-                Console.WriteLine("[*] Press enter to start it...");
+                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x64.o");
+                Console.WriteLine("[*] Press enter to start it (✂️ attach debugger here...)");
                 Console.ReadLine();
 
                 var output = bof_runner.RunBof(30);
