@@ -32,7 +32,7 @@ namespace RunBOF
                 //  bof_runner.LoadBof(filename);
 
 #if _I386
-                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x86.o");
+                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\uptime\uptime.x86.o");
 #elif _AMD64
                 bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x64.o");
 #endif
