@@ -12,6 +12,23 @@ WINBASEAPI wchar_t *__cdecl MSVCRT$wcscat(wchar_t * __restrict__ _Dest,const wch
 char *global_buffer;
 uint32_t global_buffer_maxlen;
 
+char *argument_buffer;
+uint32_t argument_buffer_length;
+
+enum arg_types {
+	BINARY,
+	INT_32,
+	INT_16,
+	STR,
+	WCHR_STR
+};
+
+char empty_string[1] = "\x00";
+
+// declare this as an import, so that our loader can fill in its address
+DECLSPEC_IMPORT void go(IN PCHAR Buffer, IN ULONG Length);
+
+
 /*
  * Beacon Object Files (BOF)
  * -------------------------

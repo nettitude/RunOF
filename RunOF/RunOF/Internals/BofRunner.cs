@@ -13,13 +13,13 @@ namespace RunBOF.Internals
     {
         private readonly Coff beacon_helper;
         private Coff bof;
-        private IntPtr entry_point;
+        public IntPtr entry_point;
         private readonly IAT iat;
-        
-        public BofRunner()
+        public ParsedArgs parsed_args;
+        public BofRunner(ParsedArgs parsed_args)
         {
             Console.WriteLine("[*] Initialising boff runner");
-
+            this.parsed_args = parsed_args;
 
             // first we need a basic IAT to hold function pointers
             // this needs to be done here so we can share it between our two object files
@@ -27,6 +27,7 @@ namespace RunBOF.Internals
 
             // First init our beacon helper object file 
             // This has the code for things like BeaconPrintf, BeaconOutput etc.
+            // It also has a wrapper for the bof entry point (go_wrapper) that allows us to pass arguments. 
             byte[] beacon_funcs;
             string [] resource_names = Assembly.GetExecutingAssembly().GetManifestResourceNames();
             if (resource_names.Contains("RunBOF.beacon_funcs"))
@@ -49,32 +50,29 @@ namespace RunBOF.Internals
                 throw e;
             }
 
-            // Find our helper functions
-            this.beacon_helper.ResolveHelpers();
+            // Serialise the arguments we want to send to our object file
+            // Find our helper functions and entry wrapper (go_wrapper)
+            this.entry_point = this.beacon_helper.ResolveHelpers(parsed_args.SerialiseArgs());
+
+
         }
 
-        public void LoadBof(byte[] in_bof)
+        public void LoadBof()
         {
-            Console.WriteLine("[*] Loading bof object...");
-            // create new coff to run our bof
-            this.bof = new Coff(in_bof, this.iat);
-            this.entry_point = this.bof.FindEntry();
-        }
 
-        public void LoadBof(string bof_filename)
-        {
             Console.WriteLine("[*] Loading boff object...");
             // create new coff
-            this.bof = new Coff(bof_filename, this.iat);
-            this.entry_point = this.bof.FindEntry();
+            this.bof = new Coff(this.parsed_args.file_bytes, this.iat);
             Console.WriteLine($"[*] Loaded BOF with entry {this.entry_point.ToInt64():X}");
+            // stitch up our go_wrapper and go_functions
+            this.bof.StitchEntry();
         }
 
         public String RunBof(uint timeout)
         {
             Console.WriteLine($"[*] Starting boff in new thread @ {this.entry_point.ToInt64():X}");
             IntPtr hThread = NativeDeclarations.CreateThread(IntPtr.Zero, 0, this.entry_point, IntPtr.Zero, 0, IntPtr.Zero);
-            NativeDeclarations.WaitForSingleObject(hThread, timeout * 10);
+            NativeDeclarations.WaitForSingleObject(hThread, timeout * 1000);
 
             // try reading from our shared buffer
             List<byte> output = new List<byte>();

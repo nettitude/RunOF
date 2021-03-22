@@ -20,12 +20,15 @@ namespace RunBOF.Internals
         private ARCH BofArch;
         private string ImportPrefix;
         private string HelperPrefix;
-        private string EntrySymbol;
+        private string EntryWrapperSymbol = "go_wrapper";
+        private string EntrySymbol = "go";
         //private IntPtr iat;
         private IAT iat;
         public IntPtr global_buffer { get; private set; }
-        public uint global_buffer_size { get; set; } = 1024;
-        private string InternalDLLName { get; set; } = "POSHBOF";
+        public int global_buffer_size { get; set; } = 1024;
+        public IntPtr argument_buffer { get; private set; }
+        public int argument_buffer_size { get; set; }
+        private string InternalDLLName { get; set; } = "RunOF";
 
         private enum ARCH: int 
         {
@@ -124,12 +127,10 @@ namespace RunBOF.Internals
             {
                 this.ImportPrefix = "__imp__";
                 this.HelperPrefix = "_"; // This I think means a global function
-                this.EntrySymbol = "_go";
             }
             else if (this.BofArch == ARCH.AMD64)
             {
                 this.ImportPrefix = "__imp_";
-                this.EntrySymbol = "go";
                 this.HelperPrefix = String.Empty;
             }
 
@@ -152,15 +153,18 @@ namespace RunBOF.Internals
 
             // Process relocations
             Console.WriteLine("[*] Processing relocations..."); 
-            section_headers.ForEach(ProcessRelocs);
+            section_headers.ForEach(ResolveRelocs);
 
         }
 
-        public void ResolveHelpers()
+        public IntPtr ResolveHelpers(byte[] serialised_args)
         {
             Console.WriteLine("[*] Looking for beacon helper functions");
             bool global_buffer_found = false;
             bool global_buffer_maxlen_found = false;
+            bool argument_buffer_found = false;
+            bool argument_buffer_length_found = false;
+            IntPtr entry_addr = IntPtr.Zero;
             foreach (var symbol in this.symbols) 
             {
                 var symbol_name = GetSymbolName(symbol);
@@ -176,7 +180,7 @@ namespace RunBOF.Internals
                 {
                     if (this.global_buffer == IntPtr.Zero)
                     {
-                        this.global_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, this.global_buffer_size, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
+                        this.global_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)this.global_buffer_size, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
                         Console.WriteLine($"[*] Allocated a {this.global_buffer_size} bytes global buffer @ {this.global_buffer.ToInt64():X}");
                     }
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
@@ -188,6 +192,29 @@ namespace RunBOF.Internals
                     global_buffer_found = true;
                    // Console.WriteLine($"Val at addr: {Marshal.ReadInt32(symbol_addr):X}");
                 }
+                else if (symbol_name == this.HelperPrefix + "argument_buffer")
+                {
+                    Console.WriteLine($"[*] Allocating argument buffer of length {serialised_args.Length}");
+                    this.argument_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)serialised_args.Length, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
+                    // Copy our data into it 
+                    Marshal.Copy(serialised_args, 0, this.argument_buffer, serialised_args.Length);
+
+                    var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
+                    Marshal.WriteIntPtr(symbol_addr, this.argument_buffer);
+                    argument_buffer_found = true;
+
+                }
+                else if (symbol_name == this.HelperPrefix + "argument_buffer_length")
+                {
+                    Console.WriteLine($"[*] Setting argument length to {(uint)serialised_args.Length}");
+                    this.argument_buffer_size = serialised_args.Length;
+                    var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
+                    // CAUTION - the sizeo of what you write here MUST match the definition in beacon_funcs.h for argument_buffer_len (currently a uint32_t)
+
+                    Marshal.WriteInt32(symbol_addr, this.argument_buffer_size);
+                    argument_buffer_length_found = true;
+
+                }
                 else if (symbol_name == this.HelperPrefix+"global_buffer_maxlen")
                 {
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
@@ -195,47 +222,58 @@ namespace RunBOF.Internals
                     //Console.WriteLine("Found maxlen");
                     //Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
                     // CAUTION - the sizeo of what you write here MUST match the definition in beacon_funcs.h for global_buffer_maxlen (currently a uint32_t)
-                    Marshal.WriteInt32(symbol_addr, 1024);
+                    Marshal.WriteInt32(symbol_addr, this.global_buffer_size);
                     global_buffer_maxlen_found = true;
 
                 }
+                else if (symbol_name == this.HelperPrefix+this.EntryWrapperSymbol)
+                {
+                    entry_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
+                    Console.WriteLine($"[*] Resolved entry address ({this.HelperPrefix + this.EntryWrapperSymbol}) to {entry_addr.ToInt64():X}");
+                }
+                else if (symbol_name == this.HelperPrefix + this.EntrySymbol) { 
+                }
 
             }
-            if (!global_buffer_found || !global_buffer_maxlen_found) throw new Exception($"Unable to find global_buffer_maxlen or global_buffer symbols in your helper object: global_buffer: {global_buffer_found} global_buffer_maxlen: {global_buffer_maxlen_found}");
-
-
+            if (!global_buffer_found || !global_buffer_maxlen_found || !argument_buffer_found || !argument_buffer_length_found) throw new Exception($"Unable to find a required symbol in your helper object: global_buffer: {global_buffer_found} \nglobal_buffer_maxlen: {global_buffer_maxlen_found} \nargument_buffer: {argument_buffer_found} \nargument_buffer_length: {argument_buffer_length_found}");
+            if (entry_addr == IntPtr.Zero) throw new Exception($"Unable to find entry point {this.HelperPrefix+this.EntryWrapperSymbol}");
+            return entry_addr;
         }
 
-        public IntPtr FindEntry()
+        public void StitchEntry()
         {
             IntPtr entry = new IntPtr();
-            Console.WriteLine("[*] Finding our entry point (go function)");
+            Console.WriteLine($"[*] Finding our entry point ({this.EntrySymbol}() function)");
 
             foreach (var symbol in symbols)
             {
 
                 // find the __go symbol address that represents our entry point
-                // TODO this isn't v efficient as we keep iterating after having found our symbol!
-                if (GetSymbolName(symbol).Equals(this.EntrySymbol))
+                if (GetSymbolName(symbol).Equals(this.HelperPrefix + this.EntrySymbol))
                 {
-                    Console.WriteLine("\t[*] Found our _go symbol");
+                    Console.WriteLine($"\t[*] Found our entry symbol {this.HelperPrefix + this.EntrySymbol}");
                     // calculate the address
                     // the formula is our base_address + symbol value + section_offset
                     int i = this.symbols.IndexOf(symbol);
                     entry = (IntPtr)(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbols[i].SectionNumber - 1].PointerToRawData); // TODO not sure about this cast 
-                    Console.WriteLine($"\t[*] Found entry address {entry.ToInt64():x}");
+                    Console.WriteLine($"\t[*] Found address {entry.ToInt64():x}");
+
+                    // now need to update our IAT with this address
+                    this.iat.Update(this.InternalDLLName, this.EntrySymbol, entry);
+
                     break;
                 }
+                // TODO we now need to link this into our go_wrapper function that we got from our helper object, and THAT is what is called so the arguments are provided correctly when the thread starts
+                // go should I think be in our IAT table already
             }
 
             if (entry == IntPtr.Zero)
             {
-                Console.WriteLine("[x] Unable to find entry point! Does your bof have a _go function?");
+                Console.WriteLine("[x] Unable to find entry point! Does your bof have a go() function?");
                 throw new Exception("Unable to find bof entry point");
             }
 
-            return entry;
-            
+           
         }
         
 
@@ -255,6 +293,8 @@ namespace RunBOF.Internals
             {
                 this.section_headers.Add(Deserialize<IMAGE_SECTION_HEADER>(reader.ReadBytes(Marshal.SizeOf(typeof(IMAGE_SECTION_HEADER)))));
             }
+
+            // TODO - initialise BSS section as zero. For now, not a problem as Cobalt doesn't do this so you're told to init anything to use;
         }
 
         private void FindSymbols()
@@ -270,7 +310,7 @@ namespace RunBOF.Internals
         }
 
 
-        private void ProcessRelocs(IMAGE_SECTION_HEADER section_header)
+        private void ResolveRelocs(IMAGE_SECTION_HEADER section_header)
         {
             if (section_header.NumberOfRelocations > 0)
             {
@@ -289,7 +329,7 @@ namespace RunBOF.Internals
                     }
                     IMAGE_SYMBOL reloc_symbol = this.symbols[(int)reloc.SymbolTableIndex];
                     var symbol_name = GetSymbolName(reloc_symbol);
-                    Console.WriteLine($"\t[*] Relocation name: {GetSymbolName(reloc_symbol)}");
+                    Console.WriteLine($"\t[*] Relocation name: {symbol_name}");
                     if (reloc_symbol.SectionNumber == IMAGE_SECTION_NUMBER.IMAGE_SYM_UNDEFINED)
                     {
 
@@ -298,28 +338,51 @@ namespace RunBOF.Internals
                         if (symbol_name.StartsWith(this.ImportPrefix + "Beacon") || symbol_name.StartsWith(this.ImportPrefix + "toWideChar"))
                         {
                             Console.WriteLine("\t[*] We need to provide this function");
-                            // so we need to have an unmanaged function somewhere and a pointer to that function
-                            // We then need to write the address of that pointer to this location
+                            // we need to write the address of the IAT entry for the function to this location
 
                             var func_name = symbol_name.Replace(this.ImportPrefix, String.Empty);
                             func_addr = this.iat.Resolve(this.InternalDLLName, func_name);
 
-                        } else
+                        }
+                        else if (symbol_name == this.ImportPrefix + this.EntrySymbol)
+                        {
+                            // this entry is found in out beacon_funcs object, and needs filling in with a ptr to the address of the go function in our actual BOF.
+                            // We don't know this yet (until that is loaded), so we add an entry to the IAT we'll fill in later.
+
+                            // in this case, it seems to want the address itself??
+                            func_addr = this.iat.Add(this.InternalDLLName, this.EntrySymbol, IntPtr.Zero);
+
+                        }
+                        else
                         {
                             // This is a win32 api function
                             Console.WriteLine("Win32API function");
 
-                            string[] symbol_parts = symbol_name.Replace(this.ImportPrefix, "").Split('$');
-
+                            string symbol_cleaned = symbol_name.Replace(this.ImportPrefix, "");
                             string dll_name;
                             string func_name;
-                            try
+                            if (symbol_cleaned.Contains("$"))
                             {
-                                dll_name = symbol_parts[0];
-                                func_name = symbol_parts[1].Split('@')[0]; // some compilers emit the number of bytes in the param list after the fn name
-                            } catch (Exception e)
+
+                                string[] symbol_parts = symbol_name.Replace(this.ImportPrefix, "").Split('$');
+
+
+                                try
+                                {
+                                    dll_name = symbol_parts[0];
+                                    func_name = symbol_parts[1].Split('@')[0]; // some compilers emit the number of bytes in the param list after the fn name
+                                }
+                                catch (Exception e)
+                                {
+
+                                    throw new Exception($"Unable to parse function name {symbol_name} as DLL$FUNCTION while processing relocations - {e}");
+                                }
+                            }
+                            else
                             {
-                                throw new Exception($"Unable to parse function name {symbol_name} while processing relocations - {e}");
+                                // TODO - some of the CS SA BOFs have no prefix?? Is this what CobalStrike does?kh
+                                dll_name = "KERNEL32";
+                                func_name = symbol_cleaned.Split('@')[0];
                             }
 
                             func_addr = this.iat.Resolve(dll_name, func_name);
@@ -334,7 +397,8 @@ namespace RunBOF.Internals
                         // Note - "in the wild" most of these are not used, which makes it a bit difficult to test. 
                         // For example, in all the BOF files I've seen only four are actually used. 
                         // An exception will be thrown if not supported
-                        // TODO - we might refactor this, but for now it feels clearest to have two switch statements. 
+                        // TODO - we should refactor this, but my head is hurting right now. 
+                        // TODO - need to check when in 64 bit mode that any 32 bit relocation's don't overflow (will .net do this for free?)
                         switch (reloc.Type)
                         {
 #if _I386

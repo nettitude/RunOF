@@ -16,26 +16,22 @@ namespace RunBOF
         {
             Console.WriteLine("[*] Starting PoshBOF.");
 
-            if (args.Length != 1)
-            {
-                Console.WriteLine("[x] Usage: PoshBof.exe <object_file>");
-                Environment.Exit(ERROR_INVALID_COMMAND_LINE); 
-            }
+            var ParsedArgs = new ParsedArgs(args); 
 
-            var filename = args[0];
 
-            Console.WriteLine($"[*] Loading object file {filename}");
+            Console.WriteLine($"[*] Loading object file {ParsedArgs.filename}");
 
             try
             {
-                BofRunner bof_runner = new BofRunner();
+                BofRunner bof_runner = new BofRunner(ParsedArgs);
                 //  bof_runner.LoadBof(filename);
 
 #if _I386
-                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\uptime\uptime.x86.o");
+                bof_runner.LoadBof();
 #elif _AMD64
                 bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x64.o");
 #endif
+                Console.WriteLine($"[*] About to start BOF in new thread at {bof_runner.entry_point.ToInt64():X}");
                 Console.WriteLine("[*] Press enter to start it (✂️ attach debugger here...)");
                 Console.ReadLine();
 
