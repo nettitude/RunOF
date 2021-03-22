@@ -194,13 +194,16 @@ namespace RunBOF.Internals
                 }
                 else if (symbol_name == this.HelperPrefix + "argument_buffer")
                 {
-                    Console.WriteLine($"[*] Allocating argument buffer of length {serialised_args.Length}");
-                    this.argument_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)serialised_args.Length, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
-                    // Copy our data into it 
-                    Marshal.Copy(serialised_args, 0, this.argument_buffer, serialised_args.Length);
+                    if (serialised_args.Length > 0)
+                    {
+                        Console.WriteLine($"[*] Allocating argument buffer of length {serialised_args.Length}");
+                        this.argument_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)serialised_args.Length, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
+                        // Copy our data into it 
+                        Marshal.Copy(serialised_args, 0, this.argument_buffer, serialised_args.Length);
 
-                    var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
-                    Marshal.WriteIntPtr(symbol_addr, this.argument_buffer);
+                        var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
+                        Marshal.WriteIntPtr(symbol_addr, this.argument_buffer);
+                    } // TODO - leave dangling if don't have any arguments? A little dangerous, but our code should check the length first....
                     argument_buffer_found = true;
 
                 }
