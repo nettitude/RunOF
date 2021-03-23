@@ -1,21 +1,5 @@
 ﻿# Script to test RunOF
 
-
-
-
-
-
-
-
-
-
-
-#$Files = Get-ChildItem -Path Z:\tools\CS-Situational-Awareness-BOF\SA\ -Filter *.x86.o -Recurse -ErrorAction SilentlyContinue -Force
-
-#foreach ($File in $Files) {
- #   & "$x86Exe" "-f" $File.FullName
-  #  }
-
 # This is designed to be used with the CS-SA bof files
 
 function Test-BOF {
@@ -27,63 +11,76 @@ function Test-BOF {
     [array] $Params
     )
 
+    "Running BOF $BofName..."
+
     $x86Exe = 'Z:\documents\RT\runof\RunOF\RunOF\bin\x86\Release\RunBOF.exe'
     $x64Exe = 'Z:\documents\RT\runof\RunOF\RunOF\bin\x64\Release\RunBOF.exe'
 
     $BofBasePath = "Z:\tools\CS-Situational-Awareness-BOF\SA\"
 
 
-    & "$x86Exe" "-f" $BofBasePath$BofName'\'$BofName'.x86.o' $Params
+    & "$x86Exe" "-f" $BofBasePath$BofName'\'$BofName'.x86.o' $Params >> log.txt
 
     if (-not $?)
     {
-        "Error running bof..."
+        "`tx86: Error..."
+    } else {
+        "`tx86: OK"
     }
 
-       # & "$x64Exe" "-f" $BofBasePath$BofName'\'$BofName'.x64.o' $Params 
+        & "$x64Exe" "-f" $BofBasePath$BofName'\'$BofName'.x64.o' $Params >> log.txt
 
     if (-not $?)
     {
-        "Error running bof..."
+        "`tx64: Error..."
+    } else {
+        "`tx64: OK"
     }
 
 }
 
 
-#Test-Bof "cacls" "-Z:C:\\Windows\\system32\\notepad.exe"
-#Test-Bof "dir" "-Z:C:\\Windows\\system32\\notepad.exe"
-#Test-Bof "driversigs" 
-#Test-Bof "env"
-#Test-Bof "ipconfig"
-#Test-Bof "ldapsearch" "-Z:*" # don't have a ldap server...
-#Test-Bof "listdns"
-#Test-Bof "listmods"
-#Test-Bof "netstat"
-#Test-Bof "netview" "-t 30" # This one's a bit slow...
-#Test-Bof "routeprint"
-#Test-Bof "nslookup" @("-z:google.com", "-s:1", "-t", "20")
-#Test-Bof "sc_enum"
-#Test-Bof "sc_query"
-#Test-Bof "whoami"
-#Test-Bof "windowlist"
-#Test-Bof "resources"
+Test-Bof "cacls" "-Z:C:\\Windows\\system32\\notepad.exe"
+Test-Bof "dir" "-Z:C:\\Windows\\system32\\notepad.exe"
+Test-Bof "driversigs" 
+Test-Bof "env"
+Test-Bof "ipconfig"
+Test-Bof "ldapsearch" "-Z:*" # don't have a ldap server...
+Test-Bof "listdns"
+Test-Bof "listmods"
+Test-Bof "netstat"
+Test-Bof "netview" "-t 30" # This one's a bit slow...
+Test-Bof "routeprint"
+Test-Bof "nslookup" @("-z:google.com", "-s:1", "-t", "20")
+Test-Bof "sc_enum"
+Test-Bof "sc_query"
+Test-Bof "whoami"
+Test-Bof "windowlist"
+Test-Bof "resources"
 Test-Bof "nslookup" @("-z:nettitude.com", "-s:1", "-t", "20")
 Test-Bof "uptime"
+Test-Bof "sc_qc" @("-z:", "-z:BthAvctpSvc")
+Test-Bof "netuser" @("-Z:jdsnape") 
+Test-Bof "sc_qdescription" @("-z:", "-z:BluetoothUserService_74eb1e")
+Test-Bof "sc_qfailure" @("-z:", "-z:BluetoothUserService_74eb1e")
+Test-Bof "sc_qtriggerinfo" @("-z:", "-z:BluetoothUserService_74eb1e")
+Test-Bof "sc_query" @("-z:", "-z:BluetoothUserService_74eb1e")
+# NOTE - 32 bit build running on 64 bit windows will only have access to the 32-bit registry (inside Wow6432Node)
+Test-Bof "reg_query" @("-i:2", "-z:SOFTWARE\\AiPersist")
+Test-Bof "schtasksenum"
+Test-Bof "schtasksquery" @("-Z:", "-Z:\Microsoft\Windows\termsrv\RemoteFX\RemoteFXvGPUDisableTask")
+
+
+
 
 # NOT WORKING 
-#Test-Bof "netuser" "jdsnape" # DOESN'T WORK? exception 0x6BA !!!!
-# Test-Bof "sc_qc" @("-Z:BthAvctpSvc")
-#Test-Bof "sc_qdescription" @("-z:BluetoothUserService_74eb1e")
 
-# These ones works in x64 but not in x86 - odd!
-#Test-Bof "reg_query" @("-i:2", "-z:SOFTWARE\\AiPersist")
-#Test-Bof "schtasksenum"
-#Test-Bof "schtasksquery" @("-z:\Microsoft\Windows\termsrv\RemoteFX\RemoteFXvGPUDisableTask")
 
 # I think the netgroup ones come from the cna file TODO !!!!
 #Test-Bof "netgrouplist"
 #Test-Bof "netsession"
 
 # WMI errors
-#Test-Bof "tasklist"
+Test-Bof "tasklist"
+
 #Test-Bof "wmi_query"

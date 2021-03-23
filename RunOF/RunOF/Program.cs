@@ -42,10 +42,10 @@ namespace RunBOF
 #endif
 
 
-                var output = bof_runner.RunBof(30);
+                var Result = bof_runner.RunBof(30);
 
                 Console.WriteLine("------- BOF OUTPUT ------");
-                Console.WriteLine($"{output}");
+                Console.WriteLine($"{Result.Output}");
                 Console.WriteLine("------- BOF OUTPUT FINISHED ------");
 #if DEBUG
                 if (ParsedArgs.debug)
@@ -55,6 +55,11 @@ namespace RunBOF
             }
 #endif
                 Logger.Info("Thanks for playing!");
+
+                // Use our thread exit code as our app exit code so we can check for errors easily
+                Environment.Exit(Result.ExitCode);
+
+
             } catch (Exception e)
             {
                 Logger.Error($"Error! {e}");

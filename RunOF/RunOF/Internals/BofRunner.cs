@@ -68,7 +68,7 @@ namespace RunBOF.Internals
             this.bof.StitchEntry();
         }
 
-        public String RunBof(uint timeout)
+        public BofRunnerOutput RunBof(uint timeout)
         {
             Logger.Info($"Starting bof in new thread @ {this.entry_point.ToInt64():X}");
             Logger.Debug(" --- MANAGED CODE END --- ");
@@ -100,8 +100,19 @@ namespace RunBOF.Internals
                 i++;
             }
 
-            return Encoding.ASCII.GetString(output.ToArray());
+            BofRunnerOutput Response = new BofRunnerOutput();
+
+            Response.Output = Encoding.ASCII.GetString(output.ToArray());
+            Response.ExitCode = ExitCode;
+
+            return Response;
             
         }
+    }
+
+    class BofRunnerOutput
+    {
+        internal string Output;
+        internal int ExitCode;
     }
 }
