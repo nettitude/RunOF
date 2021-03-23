@@ -12,7 +12,7 @@ namespace RunBOF.Internals
     {
         internal string filename;
         internal byte[] file_bytes;
-        //        internal OfArgs of_args;
+        internal int thread_timeout;
         private const int ERROR_INVALID_COMMAND_LINE = 0x667;
         internal List<OfArg> of_args;
         public bool debug = false;
@@ -66,6 +66,30 @@ namespace RunBOF.Internals
                 this.debug = true;
             }
 
+            // Set our thread timeout (seconds).
+            // This can be a number, or -1
+            if (args.Contains("-t"))
+            {
+                try
+                {
+                    int t = int.Parse(ExtractArg(args, "-t"));
+                    if (t>=0)
+                    {
+                        this.thread_timeout = t * 1000;
+                    } else if (t==-1)
+                    {
+                        this.thread_timeout = -1;
+                    } else
+                    {
+                        Logger.Error("Timeout cannot be less than -1, ignoring");
+                    }
+
+                } catch
+                {
+                    PrintUsageAndExit();
+                }
+            }
+
             // Now read in any optional arguments that get provided to the OF. 
 
             foreach (var arg in args)
@@ -107,7 +131,7 @@ namespace RunBOF.Internals
                 {
                     try
                     {
-                        of_args.Add(new OfArg((arg.Substring(3))));
+                        of_args.Add(new OfArg(arg.Substring(3)));
 
                     }
                     catch (Exception e)
@@ -118,9 +142,7 @@ namespace RunBOF.Internals
                 {
                     try
                     {
-                        of_args.Add(new OfArg(arg.Substring(3)));
-                        Logger.Error("WARNING - wchar strings not tested/supported...carrying on anyway, good luck!");
-
+                        of_args.Add(new OfArg(Encoding.Unicode.GetBytes(arg.Substring(3))));
                     }
                     catch (Exception e)
                     {
@@ -210,6 +232,8 @@ namespace RunBOF.Internals
             arg_type = ArgType.BINARY;
             this.arg_data = Encoding.ASCII.GetBytes(arg_data+"\0");
         }
+
+
 
         public OfArg(byte[] arg_data)
         { 

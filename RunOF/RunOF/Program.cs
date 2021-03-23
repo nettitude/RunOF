@@ -31,11 +31,16 @@ namespace RunBOF
                 bof_runner.LoadBof();
 
                 Logger.Info($"About to start BOF in new thread at {bof_runner.entry_point.ToInt64():X}");
+#if !DEBUG
                 if (ParsedArgs.debug)
                 {
+#endif
+                
                     Logger.Debug("Press enter to start it (✂️ attach debugger here...)");
                     Console.ReadLine();
-                }
+#if !DEBUG
+            }
+#endif
 
 
                 var output = bof_runner.RunBof(30);
@@ -43,13 +48,15 @@ namespace RunBOF
                 Console.WriteLine("------- BOF OUTPUT ------");
                 Console.WriteLine($"{output}");
                 Console.WriteLine("------- BOF OUTPUT FINISHED ------");
-
+#if !DEBUG
                 if (ParsedArgs.debug)
                 {
+#endif
                     Logger.Debug("Press enter to continue...");
                     Console.ReadLine();
-                }
-
+#if !DEBUG
+            }
+#endif
                 Logger.Info("[*] Thanks for playing!");
             } catch (Exception e)
             {
@@ -92,7 +99,7 @@ namespace RunBOF
 
         public static void Error(string Message)
         {
-            if (Level >= LogLevels.ERROR) Console.WriteLine("[!] {Message}");
+            if (Level >= LogLevels.ERROR) Console.WriteLine($"[!!] {Message}");
         }
     }
 }

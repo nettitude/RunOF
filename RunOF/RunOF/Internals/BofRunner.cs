@@ -72,7 +72,19 @@ namespace RunBOF.Internals
         {
             Logger.Info($"Starting bof in new thread @ {this.entry_point.ToInt64():X}");
             IntPtr hThread = NativeDeclarations.CreateThread(IntPtr.Zero, 0, this.entry_point, IntPtr.Zero, 0, IntPtr.Zero);
-            NativeDeclarations.WaitForSingleObject(hThread, timeout * 1000);
+
+            NativeDeclarations.WaitForSingleObject(hThread, (uint)(parsed_args.thread_timeout));
+
+            Console.Out.Flush();
+
+            int ExitCode;
+
+            NativeDeclarations.GetExitCodeThread(hThread, out ExitCode);
+
+            
+
+            Logger.Info($"Bof thread exited with code {ExitCode}");
+
 
             // try reading from our shared buffer
             List<byte> output = new List<byte>();

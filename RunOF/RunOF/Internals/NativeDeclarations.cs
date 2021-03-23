@@ -101,6 +101,9 @@ namespace RunBOF.Internals
               uint dwMilliseconds
               );
 
+            [DllImport("kernel32.dll")]
+            public static extern bool GetExitCodeThread(IntPtr hThread, out int lpExitcode);
+
             [StructLayout(LayoutKind.Sequential)]
             public struct PROCESS_BASIC_INFORMATION
             {
