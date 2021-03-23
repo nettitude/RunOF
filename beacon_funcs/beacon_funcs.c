@@ -108,7 +108,7 @@ char * BeaconDataExtract (datap *parser, int * size) {
 			uint32_t arg_len = *(uint32_t *)parser->buffer;
 			MSVCRT$printf("[*] Have a binary variable (type %d) of length %d\n", arg_type, arg_len);
 			// check have enough space left in our buffer
-			if (parser->length + 2*sizeof(uint32_t) <= arg_len) {
+			if (parser->length - 2*sizeof(uint32_t) >= arg_len) {
 				// we have a choice here, we can either return a pointer to the data in the buffer
 				// or allocate some more memory, and point back at that. 
 				// I'm not too sure what cobalt does tbh!
@@ -120,13 +120,13 @@ char * BeaconDataExtract (datap *parser, int * size) {
 				char *return_ptr = parser->buffer;
 				hexdump(return_ptr, arg_len);
 				parser->buffer = parser->buffer + arg_len;
-				parser->length = parser->length + arg_len + 2*sizeof(uint32_t);
+				parser->length = parser->length - (arg_len + 2*sizeof(uint32_t));
 				return return_ptr;
 			}
 		}
 	}
 
-	MSVCRT$printf("[!] Error extracting binary data - returning empty_string \n");
+	MSVCRT$printf("[!] Error extracting binary data - length: %d (%d)\n", parser->length, 2*sizeof(uint32_t));
 	return empty_string;
 }
 
@@ -150,7 +150,7 @@ int32_t BeaconDataInt(datap *parser) {
 
 			uint32_t arg_data = *(uint32_t *)parser->buffer;
 			parser->buffer = parser->buffer + sizeof(uint32_t);
-			parser->length = parser->length + 3 * sizeof(uint32_t);
+			parser->length = parser->length - (3 * sizeof(uint32_t));
 			MSVCRT$printf("Returning %d\n", arg_data);
 			return arg_data;
 		} else {
@@ -165,9 +165,9 @@ int32_t BeaconDataInt(datap *parser) {
 }
 
 int16_t BeaconDataShort(datap *parser) {
-	MSVCRT$puts("in BeaconDataShort....\n");
+	MSVCRT$printf("in BeaconDataShort....length %d\n", parser->length);
 
-	if (parser->length >= (2*sizeof(uint32_t) + sizeof(uint32_t))) {
+	if (parser->length >= (2*sizeof(uint32_t) + sizeof(uint16_t))) {
 		uint32_t arg_type = *(uint32_t *)parser->buffer;
 		if (arg_type == INT_16) {
 			// we need to increment the buffer pointer only if we're in the right type
@@ -183,6 +183,7 @@ int16_t BeaconDataShort(datap *parser) {
 
 			uint16_t arg_data = *(uint16_t *)parser->buffer;
 			parser->buffer = parser->buffer + sizeof(uint16_t);
+			parser->length = parser->length - (2*sizeof(uint32_t) + sizeof(uint16_t));
 			MSVCRT$printf("Returning %d\n", arg_data);
 			return arg_data;
 		} else {
