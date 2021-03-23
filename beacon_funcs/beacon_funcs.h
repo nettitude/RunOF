@@ -6,8 +6,9 @@ WINBASEAPI int __cdecl MSVCRT$vprintf(const char * __restrict__ format,va_list a
 WINBASEAPI int __cdecl MSVCRT$printf(const char * __restrict__ format, ...);
 WINBASEAPI int __cdecl MSVCRT$memcpy(void * __restrict__ _Dst,const void * __restrict__ _Src,size_t _MaxCount);
 WINBASEAPI int __cdecl MSVCRT$vsnprintf(char * __restrict__ d,size_t n,const char * __restrict__ format,va_list arg);
+WINBASEAPI void *__cdecl MSVCRT$calloc(size_t _NumOfElements, size_t _SizeOfElements);
+
 WINBASEAPI void * WINAPI KERNEL32$VirtualAlloc (LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
-WINBASEAPI wchar_t *__cdecl MSVCRT$wcscat(wchar_t * __restrict__ _Dest,const wchar_t * __restrict__ _Source);
 
 char *global_buffer;
 uint32_t global_buffer_maxlen;
@@ -60,13 +61,13 @@ typedef struct {
 	int    size;     /* total size of this buffer */
 } formatp;
 
-DECLSPEC_IMPORT void    BeaconFormatAlloc(formatp * format, int maxsz);
-DECLSPEC_IMPORT void    BeaconFormatReset(formatp * format);
-DECLSPEC_IMPORT void    BeaconFormatFree(formatp * format);
-DECLSPEC_IMPORT void    BeaconFormatAppend(formatp * format, char * text, int len);
-DECLSPEC_IMPORT void    BeaconFormatPrintf(formatp * format, char * fmt, ...);
-DECLSPEC_IMPORT char *  BeaconFormatToString(formatp * format, int * size);
-DECLSPEC_IMPORT void    BeaconFormatInt(formatp * format, int value);
+extern void    BeaconFormatAlloc(formatp * format, int maxsz);
+extern void    BeaconFormatReset(formatp * format);
+extern void    BeaconFormatFree(formatp * format);
+extern void    BeaconFormatAppend(formatp * format, char * text, int len);
+extern void    BeaconFormatPrintf(formatp * format, char * fmt, ...);
+extern char *  BeaconFormatToString(formatp * format, int * size);
+extern void    BeaconFormatInt(formatp * format, int value);
 
 /* Output Functions */
 #define CALLBACK_OUTPUT      0x0
@@ -78,9 +79,9 @@ extern void   BeaconPrintf(int type, char * fmt, ...);
 extern void   BeaconOutput(int type, char * data, int len);
 
 /* Token Functions */
-DECLSPEC_IMPORT BOOL   BeaconUseToken(HANDLE token);
-DECLSPEC_IMPORT void   BeaconRevertToken();
-DECLSPEC_IMPORT BOOL   BeaconIsAdmin();
+extern BOOL   BeaconUseToken(HANDLE token);
+void   BeaconRevertToken();
+BOOL   BeaconIsAdmin();
 
 /* Spawn+Inject Functions */
 DECLSPEC_IMPORT void   BeaconGetSpawnTo(BOOL x86, char * buffer, int length);

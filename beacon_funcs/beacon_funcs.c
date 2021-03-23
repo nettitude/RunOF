@@ -10,6 +10,8 @@ void go_wrapper() {
 	
 }
 
+// Output functions
+
 void BeaconPrintf(int type, char *fmt, ...) {
         switch (type) {
                 // from beacon.h
@@ -39,13 +41,13 @@ void BeaconPrintf(int type, char *fmt, ...) {
 
 void BeaconOutput(int type, char *data, int len) {
 	MSVCRT$puts("in BeaconOutput\n");
+	// This needs a lot of work :)
 	
 	if (len > global_buffer_maxlen) {
 		MSVCRT$memcpy(global_buffer, data, global_buffer_maxlen);
 	} else {
 		MSVCRT$memcpy(global_buffer, data, len);
 	}
-
 
 }
 
@@ -57,7 +59,11 @@ void hexdump(char * buffer, int len) {
 	MSVCRT$printf("--\n");
 }
 
-// functions for handling argument passing
+// Data API
+//
+// TODO 
+//  - handle the length parser element correctly
+//  - check we're not running off the end of the buffer..
 void BeaconDataParse (datap * parser, char * buffer, int size) {
 	MSVCRT$printf("[*] Initialising DataParser...global arg length: %d, local length: %d\n", argument_buffer_length, size);
 
@@ -157,6 +163,54 @@ int16_t BeaconDataShort(datap *parser) {
 	}
 }
 
+// Format API
+
+void BeaconFormatAlloc(formatp * format, int maxsz) {
+	format->original = MSVCRT$calloc(maxsz, 1);
+	format->buffer = format->original;
+	format->length = 0;
+	format->size = maxsz;
+
+}
+
+void BeaconFormatReset(formatp * format) {
+	return;
+}
+
+void BeaconFormatFree(formatp * format) {
+	return;
+}
+
+void BeaconFormatAppend(formatp * format, char * text, int len) {
+	return;
+}
+
+// This could be dangerous?
+void BeaconFormatPrintf(formatp * format, char * fmt, ... ) {
+	return;
+}
+
+char * BeaconFormatToString(formatp *format, int * size) {
+}
+
+void BeaconFormatInt(formatp *format, int value) {
+	return;
+}
 
 
+// Token Functions
+// not sure how to implement these
+BOOL BeaconUseToken(HANDLE token) {
+	MSVCRT$puts("[!] BeaconUseToken is unimplemented - ignoring request\n");
+	return FALSE;
+}
 
+void BeaconRevertToken() {
+	MSVCRT$puts("[!] BeaconRevertToken is unimplemented - ignoring request\n");
+	return;
+}
+
+BOOL BeaconIsAdmin() {
+	MSVCRT$puts("[!] BeaconIsAdmin is unimplemented - ignoring request\n");
+	return FALSE;
+}
