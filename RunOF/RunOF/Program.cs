@@ -1,10 +1,7 @@
 ﻿using RunBOF.Internals;
 using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Runtime.InteropServices;
-
-using System.IO;
+using System.Runtime.CompilerServices;
+using System.Diagnostics;
 
 namespace RunBOF
 {
@@ -14,26 +11,32 @@ namespace RunBOF
 
         static void Main(string[] args)
         {
-            Console.WriteLine("[*] Starting PoshBOF.");
+            Logger.Info("Starting PoshBOF.");
+
+#if DEBUG
+            Logger.Level = Logger.LogLevels.DEBUG;
+#endif
+
 
             var ParsedArgs = new ParsedArgs(args); 
 
 
-            Console.WriteLine($"[*] Loading object file {ParsedArgs.filename}");
+            Logger.Info($"Loading object file {ParsedArgs.filename}");
 
             try
             {
                 BofRunner bof_runner = new BofRunner(ParsedArgs);
                 //  bof_runner.LoadBof(filename);
 
-#if _I386
                 bof_runner.LoadBof();
-#elif _AMD64
-                bof_runner.LoadBof(@"C:\Users\jdsnape\Desktop\SA\ipconfig\ipconfig.x64.o");
-#endif
-                Console.WriteLine($"[*] About to start BOF in new thread at {bof_runner.entry_point.ToInt64():X}");
-                Console.WriteLine("[*] Press enter to start it (✂️ attach debugger here...)");
-                Console.ReadLine();
+
+                Logger.Info($"About to start BOF in new thread at {bof_runner.entry_point.ToInt64():X}");
+                if (ParsedArgs.debug)
+                {
+                    Logger.Debug("Press enter to start it (✂️ attach debugger here...)");
+                    Console.ReadLine();
+                }
+
 
                 var output = bof_runner.RunBof(30);
 
@@ -41,19 +44,55 @@ namespace RunBOF
                 Console.WriteLine($"{output}");
                 Console.WriteLine("------- BOF OUTPUT FINISHED ------");
 
-                Console.WriteLine("[*] Press enter to continue...");
-                Console.ReadLine();
-                Console.WriteLine("[*] Thanks for playing!");
+                if (ParsedArgs.debug)
+                {
+                    Logger.Debug("Press enter to continue...");
+                    Console.ReadLine();
+                }
+
+                Logger.Info("[*] Thanks for playing!");
             } catch (Exception e)
             {
-                Console.WriteLine($"[x] Error! {e}");
+                Logger.Error($"Error! {e}");
                 Environment.Exit(-1);
             }
 
+        }
+
+       
+    }
+    public static class Logger
+    {
+        public enum LogLevels
+        {
+            ERROR,
+            INFO,
+            DEBUG
+        }
+
+        public static LogLevels Level { get; set; } = LogLevels.INFO;
 
 
+        static Logger()
+        {
 
+        }
 
+        public static void Debug(string Message, [CallerMemberName] string caller = "")
+        {
+            var methodInfo = new StackTrace().GetFrame(1).GetMethod();
+            var className = methodInfo.ReflectedType.Name;
+            if (Level >= LogLevels.DEBUG) Console.WriteLine($"[=] [{className}:{methodInfo}] {Message}");
+        }
+
+        public static void Info(string Message)
+        {
+            if (Level >= LogLevels.INFO) Console.WriteLine($"[*] {Message}");
+        }
+
+        public static void Error(string Message)
+        {
+            if (Level >= LogLevels.ERROR) Console.WriteLine("[!] {Message}");
         }
     }
 }

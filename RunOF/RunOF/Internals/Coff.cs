@@ -36,11 +36,11 @@ namespace RunBOF.Internals
             AMD64 = 1
         }
 
-        public Coff(byte[] file_bytes, IAT iat)
+        public Coff(byte[] file_contents, IAT iat)
         {
             try
             {
-                Console.WriteLine($"[*] --- Loading object file from byte array ---");
+                Logger.Debug($"--- Loading object file from byte array ---");
 
                 if (iat != null)
                 {
@@ -52,114 +52,81 @@ namespace RunBOF.Internals
 
                 this.MyArch = Environment.Is64BitProcess ? ARCH.AMD64 : ARCH.I386;
 
-                LoadImage(file_bytes);
+                // do some field setup
+                this.stream = new MemoryStream(file_contents);
+                this.reader = new BinaryReader(this.stream);
+
+                this.section_headers = new List<IMAGE_SECTION_HEADER>();
+                this.symbols = new List<IMAGE_SYMBOL>();
+
+                // Allocate some memory, for now just the whole size of the object file. 
+                // TODO - could just do the memory for the sections and not the header?
+                Logger.Debug($"Allocating {file_contents.Length} bytes");
+                base_addr = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)file_contents.Length, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_EXECUTE_READWRITE);
+                Logger.Debug($"Mapped image base @ 0x{base_addr.ToInt64():x}");
+
+                // copy across
+                Marshal.Copy(file_contents, 0, base_addr, file_contents.Length);
+
+                // setup some objects to help us understand the file
+                this.file_header = Deserialize<IMAGE_FILE_HEADER>(file_contents);
+
+                // check the architecture
+                Logger.Debug($"Got file header. Architecture {this.file_header.Machine}");
+
+                if (!ArchitectureCheck())
+                {
+                    Logger.Error($"Object file architecture {this.BofArch} does not match process architecture {this.MyArch}");
+                    throw new NotImplementedException();
+                }
+
+                // Compilers use different prefixes to symbols depending on architecture. 
+                // There might be other naming conventions for functions imported in different ways, but I'm not sure.
+                if (this.BofArch == ARCH.I386)
+                {
+                    this.ImportPrefix = "__imp__";
+                    this.HelperPrefix = "_"; // This I think means a global function
+                }
+                else if (this.BofArch == ARCH.AMD64)
+                {
+                    this.ImportPrefix = "__imp_";
+                    this.HelperPrefix = String.Empty;
+                }
+
+                if (this.file_header.SizeOfOptionalHeader != 0)
+                {
+                    Logger.Error($"[x] Bad object file: has an optional header??");
+                    throw new Exception("Object file had an optional header, not standards-conforming");
+                }
+
+                // Setup our section header list.
+                Logger.Debug($"Parsing {this.file_header.NumberOfSections} section headers");
+                FindSections();
+
+                Logger.Debug($"Parsing {this.file_header.NumberOfSymbols} symbols");
+                FindSymbols();
+
+                // The string table has specified offset, it's just located directly after the last symbol header - so offset is sym_table_offset + (num_symbols * sizeof(symbol))
+                Logger.Debug($"Setting string table offset to {(this.file_header.NumberOfSymbols * Marshal.SizeOf(typeof(IMAGE_SYMBOL))) + this.file_header.PointerToSymbolTable:X}");
+                this.string_table = (this.file_header.NumberOfSymbols * Marshal.SizeOf(typeof(IMAGE_SYMBOL))) + this.file_header.PointerToSymbolTable;
+
+                // Process relocations
+                Logger.Debug("Processing relocations...");
+                section_headers.ForEach(ResolveRelocs);
+
+
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[x] Unable to load object file - {e}");
+                Logger.Error($"Unable to load object file - {e}");
                 throw (e);
             }
 
         }
 
-        public Coff(string filename, IAT iat)
-        {
-            try
-            {
-                Console.WriteLine($"[*] --- Loading object file {filename} ---");
-
-                if (iat != null)
-                {
-                    this.iat = iat;
-                }
-                else
-                {
-                    this.iat = new IAT();
-                }
-
-                this.MyArch = Environment.Is64BitProcess ? ARCH.AMD64 : ARCH.I386;
-
-
-                byte[] file_bytes = File.ReadAllBytes(filename);
-
-                LoadImage(file_bytes);
-                
-            } catch (Exception e)
-            {
-                Console.WriteLine($"[x] Unable to load object file {filename} - {e}");
-            }
-        }
-
-
-        private void LoadImage(byte[] file_contents)
-        {
-            // do some field setup
-            this.stream = new MemoryStream(file_contents);
-            this.reader = new BinaryReader(this.stream);
-
-            this.section_headers = new List<IMAGE_SECTION_HEADER>();
-            this.symbols = new List<IMAGE_SYMBOL>();
-
-            // Allocate some memory, for now just the whole size of the object file. 
-            // TODO - could just do the memory for the sections and not the header?
-            Console.WriteLine($"[*] Allocating {file_contents.Length} bytes");
-            base_addr = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)file_contents.Length, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_EXECUTE_READWRITE);
-            Console.WriteLine($"[*] Mapped image base @ 0x{base_addr.ToInt64():x}");
-
-            // copy across
-            Marshal.Copy(file_contents, 0, base_addr, file_contents.Length);
-
-            // setup some objects to help us understand the file
-            this.file_header = Deserialize<IMAGE_FILE_HEADER>(file_contents);
-
-            // check the architecture
-            Console.WriteLine($"[*] Got file header. Architecture {this.file_header.Machine}");
-
-            if (!ArchitectureCheck())
-            {
-                Console.WriteLine($"[x] Object file architecture {this.BofArch} does not match process architecture {this.MyArch}");
-                throw new NotImplementedException();
-            }
-
-            // Compilers use different prefixes to symbols depending on architecture. 
-            // There might be other naming conventions for functions imported in different ways, but I'm not sure.
-            if (this.BofArch == ARCH.I386)
-            {
-                this.ImportPrefix = "__imp__";
-                this.HelperPrefix = "_"; // This I think means a global function
-            }
-            else if (this.BofArch == ARCH.AMD64)
-            {
-                this.ImportPrefix = "__imp_";
-                this.HelperPrefix = String.Empty;
-            }
-
-            if (this.file_header.SizeOfOptionalHeader != 0)
-            {
-                Console.WriteLine($"[x] Bad object file: has an optional header??");
-                throw new Exception("Object file had an optional header, not standards-conforming");
-            }
-
-            // Setup our section header list.
-            Console.WriteLine($"[*] Parsing {this.file_header.NumberOfSections} section headers");
-            FindSections();
-
-            Console.WriteLine($"[*] Parsing {this.file_header.NumberOfSymbols} symbols");
-            FindSymbols();
-
-            // The string table has specified offset, it's just located directly after the last symbol header - so offset is sym_table_offset + (num_symbols * sizeof(symbol))
-            Console.WriteLine($"[*] Setting string table offset to {(this.file_header.NumberOfSymbols * Marshal.SizeOf(typeof(IMAGE_SYMBOL))) + this.file_header.PointerToSymbolTable:X}");
-            this.string_table = (this.file_header.NumberOfSymbols * Marshal.SizeOf(typeof(IMAGE_SYMBOL))) + this.file_header.PointerToSymbolTable;
-
-            // Process relocations
-            Console.WriteLine("[*] Processing relocations..."); 
-            section_headers.ForEach(ResolveRelocs);
-
-        }
-
         public IntPtr ResolveHelpers(byte[] serialised_args)
         {
-            Console.WriteLine("[*] Looking for beacon helper functions");
+            Logger.Debug("Looking for beacon helper functions");
             bool global_buffer_found = false;
             bool global_buffer_maxlen_found = false;
             bool argument_buffer_found = false;
@@ -172,8 +139,8 @@ namespace RunBOF.Internals
                 {
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
 
-                    //Console.WriteLine($"\t[*] Found helper function {symbol_name} - {symbol.Value}");
-                    //Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
+                    Logger.Debug($"\tFound helper function {symbol_name} - {symbol.Value}");
+                    Logger.Debug($"\t[=] Address: {symbol_addr.ToInt64():X}");
                     this.iat.Add(this.InternalDLLName, symbol_name.Replace("_", string.Empty), symbol_addr);
                 }
                 else if (symbol_name == this.HelperPrefix+"global_buffer")
@@ -181,22 +148,21 @@ namespace RunBOF.Internals
                     if (this.global_buffer == IntPtr.Zero)
                     {
                         this.global_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)this.global_buffer_size, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
-                        Console.WriteLine($"[*] Allocated a {this.global_buffer_size} bytes global buffer @ {this.global_buffer.ToInt64():X}");
+                        Logger.Debug($"Allocated a {this.global_buffer_size} bytes global buffer @ {this.global_buffer.ToInt64():X}");
                     }
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
 
-                  //  Console.WriteLine("Found global buffer");
-                  //  Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
-                    // write the address of the global buffer we allocated
+                    Logger.Debug("Found global buffer");
+                    Logger.Debug($"\t[=] Address: {symbol_addr.ToInt64():X}");
+                    //write the address of the global buffer we allocated
                     Marshal.WriteIntPtr(symbol_addr, this.global_buffer);
                     global_buffer_found = true;
-                   // Console.WriteLine($"Val at addr: {Marshal.ReadInt32(symbol_addr):X}");
                 }
                 else if (symbol_name == this.HelperPrefix + "argument_buffer")
                 {
                     if (serialised_args.Length > 0)
                     {
-                        Console.WriteLine($"[*] Allocating argument buffer of length {serialised_args.Length}");
+                        Logger.Debug($"Allocating argument buffer of length {serialised_args.Length}");
                         this.argument_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)serialised_args.Length, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
                         // Copy our data into it 
                         Marshal.Copy(serialised_args, 0, this.argument_buffer, serialised_args.Length);
@@ -209,7 +175,7 @@ namespace RunBOF.Internals
                 }
                 else if (symbol_name == this.HelperPrefix + "argument_buffer_length")
                 {
-                    Console.WriteLine($"[*] Setting argument length to {(uint)serialised_args.Length}");
+                    Logger.Debug($"Setting argument length to {(uint)serialised_args.Length}");
                     this.argument_buffer_size = serialised_args.Length;
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
                     // CAUTION - the sizeo of what you write here MUST match the definition in beacon_funcs.h for argument_buffer_len (currently a uint32_t)
@@ -222,8 +188,8 @@ namespace RunBOF.Internals
                 {
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
                     // write the maximum size of the buffer TODO - this shouldn't be hardcoded
-                    //Console.WriteLine("Found maxlen");
-                    //Console.WriteLine($"\t[=] Address: {symbol_addr.ToInt64():X}");
+                    //Logger.Debug("Found maxlen");
+                    //Logger.Debug($"\t[=] Address: {symbol_addr.ToInt64():X}");
                     // CAUTION - the sizeo of what you write here MUST match the definition in beacon_funcs.h for global_buffer_maxlen (currently a uint32_t)
                     Marshal.WriteInt32(symbol_addr, this.global_buffer_size);
                     global_buffer_maxlen_found = true;
@@ -232,7 +198,7 @@ namespace RunBOF.Internals
                 else if (symbol_name == this.HelperPrefix+this.EntryWrapperSymbol)
                 {
                     entry_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
-                    Console.WriteLine($"[*] Resolved entry address ({this.HelperPrefix + this.EntryWrapperSymbol}) to {entry_addr.ToInt64():X}");
+                    Logger.Debug($"Resolved entry address ({this.HelperPrefix + this.EntryWrapperSymbol}) to {entry_addr.ToInt64():X}");
                 }
                 else if (symbol_name == this.HelperPrefix + this.EntrySymbol) { 
                 }
@@ -246,7 +212,7 @@ namespace RunBOF.Internals
         public void StitchEntry()
         {
             IntPtr entry = new IntPtr();
-            Console.WriteLine($"[*] Finding our entry point ({this.EntrySymbol}() function)");
+            Logger.Debug($"Finding our entry point ({this.EntrySymbol}() function)");
 
             foreach (var symbol in symbols)
             {
@@ -254,12 +220,12 @@ namespace RunBOF.Internals
                 // find the __go symbol address that represents our entry point
                 if (GetSymbolName(symbol).Equals(this.HelperPrefix + this.EntrySymbol))
                 {
-                    Console.WriteLine($"\t[*] Found our entry symbol {this.HelperPrefix + this.EntrySymbol}");
+                    Logger.Debug($"\tFound our entry symbol {this.HelperPrefix + this.EntrySymbol}");
                     // calculate the address
                     // the formula is our base_address + symbol value + section_offset
                     int i = this.symbols.IndexOf(symbol);
                     entry = (IntPtr)(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbols[i].SectionNumber - 1].PointerToRawData); // TODO not sure about this cast 
-                    Console.WriteLine($"\t[*] Found address {entry.ToInt64():x}");
+                    Logger.Debug($"\tFound address {entry.ToInt64():x}");
 
                     // now need to update our IAT with this address
                     this.iat.Update(this.InternalDLLName, this.EntrySymbol, entry);
@@ -272,8 +238,8 @@ namespace RunBOF.Internals
 
             if (entry == IntPtr.Zero)
             {
-                Console.WriteLine("[x] Unable to find entry point! Does your bof have a go() function?");
-                throw new Exception("Unable to find bof entry point");
+                Logger.Error("Unable to find entry point! Does your bof have a go() function?");
+                throw new Exception("Unable to find entry point");
             }
 
            
@@ -308,7 +274,7 @@ namespace RunBOF.Internals
             {
                 this.symbols.Add(Deserialize<IMAGE_SYMBOL>(reader.ReadBytes(Marshal.SizeOf(typeof(IMAGE_SYMBOL)))));
             }
-            Console.WriteLine($"[*] Created list of {this.symbols.Count} symbols");
+            Logger.Debug($"Created list of {this.symbols.Count} symbols");
 
         }
 
@@ -317,7 +283,7 @@ namespace RunBOF.Internals
         {
             if (section_header.NumberOfRelocations > 0)
             {
-                Console.WriteLine($"[*] Processing {section_header.NumberOfRelocations} relocations for {Encoding.ASCII.GetString(section_header.Name)} section from offset {section_header.PointerToRelocations:X}");
+                Logger.Debug($"Processing {section_header.NumberOfRelocations} relocations for {Encoding.ASCII.GetString(section_header.Name)} section from offset {section_header.PointerToRelocations:X}");
                 this.stream.Seek(section_header.PointerToRelocations, SeekOrigin.Begin);
 
                 for (int i = 0; i < section_header.NumberOfRelocations; i++)
@@ -325,14 +291,14 @@ namespace RunBOF.Internals
                     var struct_bytes = reader.ReadBytes(Marshal.SizeOf(typeof(IMAGE_RELOCATION)));
 
                     IMAGE_RELOCATION reloc = Deserialize<IMAGE_RELOCATION>(struct_bytes);
-                    Console.WriteLine($"\t[*] Got reloc info: {reloc.VirtualAddress:X} - {reloc.SymbolTableIndex:X} - {reloc.Type} - @ { (this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress).ToInt64():X}");
+                    Logger.Debug($"Got reloc info: {reloc.VirtualAddress:X} - {reloc.SymbolTableIndex:X} - {reloc.Type} - @ { (this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress).ToInt64():X}");
                     if ((int)reloc.SymbolTableIndex > this.symbols.Count || (int)reloc.SymbolTableIndex < 0)
                     {
                         throw new Exception($"Unable to parse relocation # {i+1} symbol table index - {reloc.SymbolTableIndex}");
                     }
                     IMAGE_SYMBOL reloc_symbol = this.symbols[(int)reloc.SymbolTableIndex];
                     var symbol_name = GetSymbolName(reloc_symbol);
-                    Console.WriteLine($"\t[*] Relocation name: {symbol_name}");
+                    Logger.Debug($"Relocation name: {symbol_name}");
                     if (reloc_symbol.SectionNumber == IMAGE_SECTION_NUMBER.IMAGE_SYM_UNDEFINED)
                     {
 
@@ -340,7 +306,7 @@ namespace RunBOF.Internals
 
                         if (symbol_name.StartsWith(this.ImportPrefix + "Beacon") || symbol_name.StartsWith(this.ImportPrefix + "toWideChar"))
                         {
-                            Console.WriteLine("\t[*] We need to provide this function");
+                            Logger.Debug("We need to provide this function");
                             // we need to write the address of the IAT entry for the function to this location
 
                             var func_name = symbol_name.Replace(this.ImportPrefix, String.Empty);
@@ -359,7 +325,7 @@ namespace RunBOF.Internals
                         else
                         {
                             // This is a win32 api function
-                            Console.WriteLine("Win32API function");
+                            Logger.Debug("Win32API function");
 
                             string symbol_cleaned = symbol_name.Replace(this.ImportPrefix, "");
                             string dll_name;
@@ -395,7 +361,7 @@ namespace RunBOF.Internals
                         // write our address to the relocation
                         IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
                         Int64 current_value = Marshal.ReadInt32(reloc_location);
-                        Console.WriteLine($"Current value: {current_value:X}");
+                        Logger.Debug($"Current value: {current_value:X}");
                         // How we write our relocation depends on the relocation type and architecture
                         // Note - "in the wild" most of these are not used, which makes it a bit difficult to test. 
                         // For example, in all the BOF files I've seen only four are actually used. 
@@ -452,12 +418,12 @@ namespace RunBOF.Internals
                             default:
                                 throw new Exception($"Unable to process function relocation type {reloc.Type} - please file a bug report.");
                     }
-                        Console.WriteLine($"\t[*] Write relocation to {reloc_location.ToInt64():X}");
+                        Logger.Debug($"\tWrite relocation to {reloc_location.ToInt64():X}");
 
                     }
                     else
                     {
-                        Console.WriteLine("\t[*] Resolving internal reference");
+                        Logger.Debug("\tResolving internal reference");
                         IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
 #if _I386
                         Int32 current_value = Marshal.ReadInt32(reloc_location);

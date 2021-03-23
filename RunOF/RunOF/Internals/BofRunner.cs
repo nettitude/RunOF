@@ -18,7 +18,7 @@ namespace RunBOF.Internals
         public ParsedArgs parsed_args;
         public BofRunner(ParsedArgs parsed_args)
         {
-            Console.WriteLine("[*] Initialising boff runner");
+            Logger.Debug("Initialising boff runner");
             this.parsed_args = parsed_args;
 
             // first we need a basic IAT to hold function pointers
@@ -60,17 +60,17 @@ namespace RunBOF.Internals
         public void LoadBof()
         {
 
-            Console.WriteLine("[*] Loading boff object...");
+            Logger.Debug("Loading boff object...");
             // create new coff
             this.bof = new Coff(this.parsed_args.file_bytes, this.iat);
-            Console.WriteLine($"[*] Loaded BOF with entry {this.entry_point.ToInt64():X}");
+            Logger.Debug($"Loaded BOF with entry {this.entry_point.ToInt64():X}");
             // stitch up our go_wrapper and go_functions
             this.bof.StitchEntry();
         }
 
         public String RunBof(uint timeout)
         {
-            Console.WriteLine($"[*] Starting boff in new thread @ {this.entry_point.ToInt64():X}");
+            Logger.Info($"Starting bof in new thread @ {this.entry_point.ToInt64():X}");
             IntPtr hThread = NativeDeclarations.CreateThread(IntPtr.Zero, 0, this.entry_point, IntPtr.Zero, 0, IntPtr.Zero);
             NativeDeclarations.WaitForSingleObject(hThread, timeout * 1000);
 

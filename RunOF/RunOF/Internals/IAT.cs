@@ -25,7 +25,7 @@ namespace RunBOF.Internals
             // do we already have it in our IAT table? It not lookup and add
             if (!this.iat_entries.ContainsKey(dll_name + "$" + func_name))
             {
-                Console.WriteLine($"[*] Resolving {func_name} from {dll_name}");
+                Logger.Debug($"Resolving {func_name} from {dll_name}");
 
                 IntPtr dll_handle = NativeDeclarations.LoadLibrary(dll_name);
                 IntPtr func_ptr = NativeDeclarations.GetProcAddress(dll_handle, func_name);
@@ -33,7 +33,7 @@ namespace RunBOF.Internals
                 {
                     throw new Exception($"Unable to resolve {func_name} from {dll_name}");
                 }
-                Console.WriteLine($"\t[*] Got function address {func_ptr.ToInt64():X}");
+                Logger.Debug($"\tGot function address {func_ptr.ToInt64():X}");
                 Add(dll_name, func_name, func_ptr);
             }
 
@@ -45,7 +45,7 @@ namespace RunBOF.Internals
         public IntPtr Add(string dll_name, string func_name, IntPtr func_address)
         {
 #if _I386
-            Console.WriteLine($"[*] Adding {dll_name+ "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 4):X}");
+            Logger.Debug($"Adding {dll_name+ "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 4):X}");
             Marshal.WriteInt32(this.iat_addr + (this.iat_count * 4), func_address.ToInt32());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 4));
             this.iat_count++;
@@ -54,7 +54,7 @@ namespace RunBOF.Internals
 
 
 #elif _AMD64
-            Console.WriteLine($"[*] Adding {dll_name + "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 8):X}");
+            Logger.Debug($"Adding {dll_name + "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 8):X}");
 
             Marshal.WriteInt64(this.iat_addr + (this.iat_count * 8), func_address.ToInt64());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 8));
@@ -73,11 +73,11 @@ namespace RunBOF.Internals
             // Write the new address into our IAT memory. 
             // we don't need to update our internal iat_entries dict as that is just a mapping of name to IAT memory location.
 #if _I386
-            Console.WriteLine($"[*] Updating symbol {dll_name + "$" + func_name} @ {this.iat_entries[dll_name + "$" + func_name].ToInt64():X} from {Marshal.ReadInt32(this.iat_entries[dll_name + "$" + func_name]):X} to {func_address.ToInt32():X}");
+            Logger.Debug($"Updating symbol {dll_name + "$" + func_name} @ {this.iat_entries[dll_name + "$" + func_name].ToInt64():X} from {Marshal.ReadInt32(this.iat_entries[dll_name + "$" + func_name]):X} to {func_address.ToInt32():X}");
 
             Marshal.WriteInt32(this.iat_entries[dll_name + "$" + func_name], func_address.ToInt32());
 #elif _AMD64
-            Console.WriteLine($"[*] Updating symbol {dll_name + "$" + func_name} from {Marshal.ReadInt64(this.iat_entries[dll_name + "$" + func_name]):X} to {func_address.ToInt64():X}");
+            Logger.Debug($"Updating symbol {dll_name + "$" + func_name} from {Marshal.ReadInt64(this.iat_entries[dll_name + "$" + func_name]):X} to {func_address.ToInt64():X}");
 
             Marshal.WriteInt64(this.iat_entries[dll_name + "$" + func_name], func_address.ToInt64());
 #endif

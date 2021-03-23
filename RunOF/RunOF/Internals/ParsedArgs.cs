@@ -15,10 +15,11 @@ namespace RunBOF.Internals
         //        internal OfArgs of_args;
         private const int ERROR_INVALID_COMMAND_LINE = 0x667;
         internal List<OfArg> of_args;
+        public bool debug = false;
 
         public ParsedArgs(string[] args)
         {
-            Console.WriteLine($"[*] Parsing Arg 2s: {string.Join(" ", args)}");
+            Logger.Debug($"Parsing Arguments: {string.Join(" ", args)}");
             of_args = new List<OfArg>();
             // Mandatory arguments are either file (-f) or base 64 encoded bytes(-b)
             if (!args.Contains("-f") && !args.Contains("-a"))
@@ -37,7 +38,7 @@ namespace RunBOF.Internals
                         file_bytes = File.ReadAllBytes(filename);
                     } catch (Exception e)
                     {
-                        Console.WriteLine($"Unable to read file {filename} : {e}");
+                        Logger.Error($"Unable to read file {filename} : {e}");
                         Environment.Exit(-1);
                     }
 
@@ -58,6 +59,13 @@ namespace RunBOF.Internals
 
             }
 
+            // Set our log level
+            if (args.Contains("-v"))
+            {
+                Logger.Level = Logger.LogLevels.DEBUG;
+                this.debug = true;
+            }
+
             // Now read in any optional arguments that get provided to the OF. 
 
             foreach (var arg in args)
@@ -71,7 +79,7 @@ namespace RunBOF.Internals
 
                     } catch (Exception e)
                     {
-                        Console.WriteLine($"Unable to parse OF argument -b as a base64 array: {e}");
+                        Logger.Error($"Unable to parse OF argument -b as a base64 array: {e}");
                     }
                 } else if (arg.StartsWith("-i:"))
                 {
@@ -81,7 +89,7 @@ namespace RunBOF.Internals
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine($"Unable to parse OF argument -i as a uint32: {e}");
+                        Logger.Error($"Unable to parse OF argument -i as a uint32: {e}");
                     }
 
                 } else if (arg.StartsWith("-s:"))
@@ -92,7 +100,7 @@ namespace RunBOF.Internals
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine($"Unable to parse OF argument -s as a uint16: {e}");
+                        Logger.Error($"Unable to parse OF argument -s as a uint16: {e}");
                     }
                 }
                 else if (arg.StartsWith("-z:"))
@@ -104,19 +112,19 @@ namespace RunBOF.Internals
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine($"Unable to parse OF argument -z as a string: {e}");
+                        Logger.Error($"Unable to parse OF argument -z as a string: {e}");
                     }
                 } else if (arg.StartsWith("-Z:"))
                 {
                     try
                     {
                         of_args.Add(new OfArg(arg.Substring(3)));
-                        Console.WriteLine("[!] WARNING - wchar strings not tested/supported...carrying on anyway, good luck!");
+                        Logger.Error("WARNING - wchar strings not tested/supported...carrying on anyway, good luck!");
 
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine($"Unable to parse OF argument -Z as a string: {e}");
+                        Logger.Error($"Unable to parse OF argument -Z as a string: {e}");
                     }
 
                 }
@@ -130,11 +138,11 @@ namespace RunBOF.Internals
         public byte[] SerialiseArgs()
         {
             List<byte> output_bytes = new List<byte>();
-            Console.WriteLine($"[*] Serialising {this.of_args.Count} object file arguments ");
+            Logger.Debug($"Serialising {this.of_args.Count} object file arguments ");
             // convert our list of arguments into a byte array
             foreach (var of_arg in this.of_args)
             {
-                Console.WriteLine($"\t[*] Serialising arg of type {of_arg.arg_type} [{(UInt32)of_arg.arg_type}:X]");
+                Logger.Debug($"\tSerialising arg of type {of_arg.arg_type} [{(UInt32)of_arg.arg_type}:X]");
                 // Add the type
                 output_bytes.AddRange(BitConverter.GetBytes((UInt32)of_arg.arg_type));
                 // Add the length
