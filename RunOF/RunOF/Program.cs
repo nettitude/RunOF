@@ -11,7 +11,7 @@ namespace RunBOF
 
         static void Main(string[] args)
         {
-            Logger.Info("Starting PoshBOF.");
+            Logger.Info("Starting RunOF.");
 
 #if DEBUG
             Logger.Level = Logger.LogLevels.DEBUG;
@@ -31,14 +31,13 @@ namespace RunBOF
                 bof_runner.LoadBof();
 
                 Logger.Info($"About to start BOF in new thread at {bof_runner.entry_point.ToInt64():X}");
-#if !DEBUG
+                // We only want the press enter to start if a debug build and -v flag supplied, as we might want logs from a non-interactive session
+#if DEBUG
                 if (ParsedArgs.debug)
                 {
-#endif
                 
                     Logger.Debug("Press enter to start it (✂️ attach debugger here...)");
                     Console.ReadLine();
-#if !DEBUG
             }
 #endif
 
@@ -48,16 +47,14 @@ namespace RunBOF
                 Console.WriteLine("------- BOF OUTPUT ------");
                 Console.WriteLine($"{output}");
                 Console.WriteLine("------- BOF OUTPUT FINISHED ------");
-#if !DEBUG
+#if DEBUG
                 if (ParsedArgs.debug)
                 {
-#endif
                     Logger.Debug("Press enter to continue...");
                     Console.ReadLine();
-#if !DEBUG
             }
 #endif
-                Logger.Info("[*] Thanks for playing!");
+                Logger.Info("Thanks for playing!");
             } catch (Exception e)
             {
                 Logger.Error($"Error! {e}");

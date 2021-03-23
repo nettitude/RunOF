@@ -19,7 +19,16 @@ namespace RunBOF.Internals
 
         public ParsedArgs(string[] args)
         {
-            Logger.Debug($"Parsing Arguments: {string.Join(" ", args)}");
+
+            // Set our log level
+            if (args.Contains("-v"))
+            {
+                Logger.Level = Logger.LogLevels.DEBUG;
+                this.debug = true;
+            }
+
+
+            Logger.Debug($"Parsing {args.Length} Arguments: {string.Join(" ", args)}");
             of_args = new List<OfArg>();
             // Mandatory arguments are either file (-f) or base 64 encoded bytes(-b)
             if (!args.Contains("-f") && !args.Contains("-a"))
@@ -59,12 +68,6 @@ namespace RunBOF.Internals
 
             }
 
-            // Set our log level
-            if (args.Contains("-v"))
-            {
-                Logger.Level = Logger.LogLevels.DEBUG;
-                this.debug = true;
-            }
 
             // Set our thread timeout (seconds).
             // This can be a number, or -1

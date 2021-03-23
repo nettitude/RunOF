@@ -29,6 +29,8 @@ void go_wrapper() {
 	KERNEL32$AddVectoredExceptionHandler(0, VectoredExceptionHandler);
 	debugPrintf("[*] --- UNMANAGED CODE START --- \n");
 	debugPrintf("[*] --- Calling BOF go() function --- \n");
+	
+
 	go(argument_buffer, argument_buffer_length);
 	debugPrintf("[*] BOF finished\n");
 
@@ -70,7 +72,7 @@ void BeaconPrintf(int type, char *fmt, ...) {
 };
 
 void BeaconOutput(int type, char *data, int len) {
-	MSVCRT$puts("in BeaconOutput\n");
+	debugPrintf("in BeaconOutput\n");
 	// This needs a lot of work :)
 	
 	if (len > global_buffer_maxlen) {
@@ -145,19 +147,19 @@ char * BeaconDataExtract (datap *parser, int * size) {
 				return return_ptr;
 			} else {
 				debugPrintf("[!] Unable to extract binary data - buffer len: %d \n", parser->length);
-				if (size != NULL) *size = 0;
+				if (size != NULL) *size = 1;
 				return &empty_string;
 			}
 		} else {
 			debugPrintf("[!] Unable to extract binary data - wrong type: %d \n", arg_type);
-			if (size != NULL) *size = 0;
+			if (size != NULL) *size = 1;
 			return &empty_string;
 
 		}
 	} 
 
 	debugPrintf("[!] Unable to extract binary data - length too short: %d\n", parser->length);
-	if (size != NULL) *size = 0;
+	if (size != NULL) *size = 1;
 	return &empty_string;
 }
 
