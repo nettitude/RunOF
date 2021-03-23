@@ -11,7 +11,7 @@ LONG WINAPI VectoredExceptionHandler(struct _EXCEPTION_POINTERS *ExceptionInfo) 
 	KERNEL32$ExitThread(-1);
 }
 
-char empty_string = '\x00';
+char empty_string[2] = "\x00\x00";
 
 void debugPrintf(char *fmt, ...) {
 	va_list argp;
@@ -118,7 +118,9 @@ int BeaconDataLength (datap *parser) {
 }
 
 char * BeaconDataExtract (datap *parser, int * size) {
-	empty_string = '\x00'; // We need to explicitly init this here, as it gets put in the BSS which our loader doesn't set to zero
+
+	empty_string[0] = '\x00'; // We need to explicitly init this here, as it gets put in the BSS which our loader doesn't set to zero
+	empty_string[1] = '\x00'; // Set two bytes beacuse some BOF clients might treat this as a wchar
 	debugPrintf("[*] BeaconDataExtract...%d / %d bytes read\n", parser->size - parser->length, parser->size);
 
 	// check we have enough space left in our buffer - need at least space for the type and the length
@@ -148,19 +150,19 @@ char * BeaconDataExtract (datap *parser, int * size) {
 			} else {
 				debugPrintf("[!] Unable to extract binary data - buffer len: %d \n", parser->length);
 				if (size != NULL) *size = 1;
-				return &empty_string;
+				return empty_string;
 			}
 		} else {
 			debugPrintf("[!] Unable to extract binary data - wrong type: %d \n", arg_type);
 			if (size != NULL) *size = 1;
-			return &empty_string;
+			return empty_string;
 
 		}
 	} 
 
 	debugPrintf("[!] Unable to extract binary data - length too short: %d\n", parser->length);
 	if (size != NULL) *size = 1;
-	return &empty_string;
+	return empty_string;
 }
 
 int32_t BeaconDataInt(datap *parser) {
