@@ -2,16 +2,16 @@
 
 A tool to run object files, mainly beacon object files (BOF), in .Net.
 
-**Current status:** WIP, x86 mostly works (you can't provide arguments), x64 only partially implemented.
+**Current status:** WIP, most BOFs work, there are some (e.g. WMI) that don't. not all BOF output is captured, and not all funcs are implemented
 
 ## TODO list
 
 Main things to do are:
 
- - [ ] Passing arguments to BOFs
+ - [x] Passing arguments to BOFs
  - [ ] A testing framework (i.e. run a load of BOFs and check it all works)
  - [ ] Command line & integration into Posh (mirror RunPE)
- - [ ] General tidy up (especially logging)
+ - [x] General tidy up (especially logging)
 
 ## Components
 
