@@ -124,7 +124,7 @@ namespace RunBOF.Internals
 
         }
 
-        public IntPtr ResolveHelpers(byte[] serialised_args)
+        public IntPtr ResolveHelpers(byte[] serialised_args, bool debug)
         {
             Logger.Debug("Looking for beacon helper functions");
             bool global_buffer_found = false;
@@ -200,7 +200,16 @@ namespace RunBOF.Internals
                     entry_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
                     Logger.Debug($"Resolved entry address ({this.HelperPrefix + this.EntryWrapperSymbol}) to {entry_addr.ToInt64():X}");
                 }
-                else if (symbol_name == this.HelperPrefix + this.EntrySymbol) { 
+                else if (symbol_name == this.HelperPrefix + "global_debug_flag") {
+                    var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
+
+                    if (debug)
+                    {
+                        Marshal.WriteInt32(symbol_addr, 1);
+                    } else
+                    {
+                        Marshal.WriteInt32(symbol_addr, 0);
+                    }
                 }
 
             }

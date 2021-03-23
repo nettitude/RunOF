@@ -12,7 +12,7 @@ namespace RunBOF.Internals
     {
         internal string filename;
         internal byte[] file_bytes;
-        internal int thread_timeout;
+        internal int thread_timeout = 30000;
         private const int ERROR_INVALID_COMMAND_LINE = 0x667;
         internal List<OfArg> of_args;
         public bool debug = false;

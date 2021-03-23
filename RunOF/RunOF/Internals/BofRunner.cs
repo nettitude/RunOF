@@ -52,7 +52,7 @@ namespace RunBOF.Internals
 
             // Serialise the arguments we want to send to our object file
             // Find our helper functions and entry wrapper (go_wrapper)
-            this.entry_point = this.beacon_helper.ResolveHelpers(parsed_args.SerialiseArgs());
+            this.entry_point = this.beacon_helper.ResolveHelpers(parsed_args.SerialiseArgs(), parsed_args.debug);
 
 
         }
@@ -71,19 +71,23 @@ namespace RunBOF.Internals
         public String RunBof(uint timeout)
         {
             Logger.Info($"Starting bof in new thread @ {this.entry_point.ToInt64():X}");
+            Logger.Debug(" --- MANAGED CODE END --- ");
             IntPtr hThread = NativeDeclarations.CreateThread(IntPtr.Zero, 0, this.entry_point, IntPtr.Zero, 0, IntPtr.Zero);
-
             NativeDeclarations.WaitForSingleObject(hThread, (uint)(parsed_args.thread_timeout));
 
             Console.Out.Flush();
+            Logger.Debug(" --- MANAGED CODE START --- ");
 
             int ExitCode;
 
             NativeDeclarations.GetExitCodeThread(hThread, out ExitCode);
 
             
+            if (ExitCode < 0)
+            {
+                Logger.Info($"Bof thread exited with code {ExitCode} - see above for exception information. ");
 
-            Logger.Info($"Bof thread exited with code {ExitCode}");
+            }
 
 
             // try reading from our shared buffer
