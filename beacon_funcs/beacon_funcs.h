@@ -11,11 +11,14 @@ WINBASEAPI void *__cdecl MSVCRT$calloc(size_t _NumOfElements, size_t _SizeOfElem
 WINBASEAPI void * WINAPI KERNEL32$VirtualAlloc (LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
 WINBASEAPI void WINAPI KERNEL32$AddVectoredExceptionHandler (ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
 WINBASEAPI void WINAPI KERNEL32$ExitThread(DWORD dwExitCode);
+
 char *global_buffer;
 uint32_t global_buffer_maxlen;
 
 char *argument_buffer;
 uint32_t argument_buffer_length;
+
+uint32_t global_debug_flag;
 
 enum arg_types {
 	BINARY,
@@ -25,7 +28,6 @@ enum arg_types {
 	WCHR_STR
 };
 
-char empty_string[1] = "\x00";
 
 // declare this as an import, so that our loader can fill in its address
 DECLSPEC_IMPORT void go(IN PCHAR Buffer, IN ULONG Length);

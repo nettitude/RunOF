@@ -4,23 +4,41 @@
 #include <excpt.h>
 #include "beacon_funcs.h"
 
+/* Helper functions */
 
 LONG WINAPI VectoredExceptionHandler(struct _EXCEPTION_POINTERS *ExceptionInfo) {
 	MSVCRT$printf("\n EXCEPTION \n --------- \n Exception while running object file: %X\n --------- \n\n", ExceptionInfo->ExceptionRecord->ExceptionCode);
 	KERNEL32$ExitThread(-1);
 }
 
+char empty_string = '\x00';
+
+void debugPrintf(char *fmt, ...) {
+	va_list argp;
+
+	if (global_debug_flag) {
+		va_start(argp, fmt);
+		MSVCRT$vprintf(fmt, argp);
+		va_end(argp);
+	}
+}
+
 // we have a wrapper around our go function to change our globals into parameters
 // because we can't pass args in a usual way to the new thread
 void go_wrapper() {
 	KERNEL32$AddVectoredExceptionHandler(0, VectoredExceptionHandler);
+	debugPrintf("[*] --- UNMANAGED CODE START --- \n");
+	debugPrintf("[*] --- Calling BOF go() function --- \n");
 	go(argument_buffer, argument_buffer_length);
+	debugPrintf("[*] BOF finished\n");
 
 	//char *ptr = 0;
 	//*ptr = 0;
+	debugPrintf("[*] UNMANAGED CODE END\n");
 	KERNEL32$ExitThread(0);
 	
 }
+
 
 // Output functions
 
@@ -64,20 +82,22 @@ void BeaconOutput(int type, char *data, int len) {
 }
 
 void hexdump(char * buffer, int len) {
-	MSVCRT$printf("--\n");
-	for (int i =0 ; i< len; i++) {
-		MSVCRT$printf("%02x ", buffer[i]);
+	if (global_debug_flag) {
+		MSVCRT$printf("--\n");
+		for (int i =0 ; i< len; i++) {
+			MSVCRT$printf("%02x ", buffer[i]);
+		}
+		MSVCRT$printf("--\n");
 	}
-	MSVCRT$printf("--\n");
 }
 
 // Data API
-//
 // TODO 
 //  - handle the length parser element correctly
 //  - check we're not running off the end of the buffer..
+
 void BeaconDataParse (datap * parser, char * buffer, int size) {
-	MSVCRT$printf("[*] Initialising DataParser...global arg length: %d, local length: %d\n", argument_buffer_length, size);
+	debugPrintf("[*] Initialising DataParser...global arg length: %d, local length: %d\n", argument_buffer_length, size);
 
 	// we want to set our parser fields to point to the right stuff...
 	parser->original = buffer; // The original buffer
@@ -88,7 +108,7 @@ void BeaconDataParse (datap * parser, char * buffer, int size) {
 	hexdump(buffer, size);
 	hexdump(parser->buffer, size);
 
-	MSVCRT$printf("[*] Finished initialising DataParser\n");
+	debugPrintf("[*] Finished initialising DataParser\n");
 }
 
 int BeaconDataLength (datap *parser) {
@@ -96,7 +116,8 @@ int BeaconDataLength (datap *parser) {
 }
 
 char * BeaconDataExtract (datap *parser, int * size) {
-	MSVCRT$puts("in BeaconDataExtract...\n");
+	empty_string = '\x00'; // We need to explicitly init this here, as it gets put in the BSS which our loader doesn't set to zero
+	debugPrintf("[*] BeaconDataExtract...%d / %d bytes read\n", parser->size - parser->length, parser->size);
 
 	// check we have enough space left in our buffer - need at least space for the type and the length
 	if (parser->length > 2 * sizeof(uint32_t)) {
@@ -106,32 +127,42 @@ char * BeaconDataExtract (datap *parser, int * size) {
 			// we need to increment the buffer pointer only if we're in the right type
 			parser->buffer = parser->buffer + sizeof(uint32_t);
 			uint32_t arg_len = *(uint32_t *)parser->buffer;
-			MSVCRT$printf("[*] Have a binary variable (type %d) of length %d\n", arg_type, arg_len);
+			debugPrintf("[*] Have a binary variable (type %d) of length %d\n", arg_type, arg_len);
 			// check have enough space left in our buffer
 			if (parser->length - 2*sizeof(uint32_t) >= arg_len) {
 				// we have a choice here, we can either return a pointer to the data in the buffer
 				// or allocate some more memory, and point back at that. 
-				// I'm not too sure what cobalt does tbh!
+				// I'm not too sure what cobalt does, so just returning ptr to buffer!
 				parser->buffer = parser->buffer + sizeof(uint32_t);
-				if (size != NULL) {
-					*size = arg_len;
-				}
+
+				if (size != NULL) *size = arg_len;
 
 				char *return_ptr = parser->buffer;
 				hexdump(return_ptr, arg_len);
 				parser->buffer = parser->buffer + arg_len;
 				parser->length = parser->length - (arg_len + 2*sizeof(uint32_t));
+				debugPrintf("[*] Returning %d byte 'binary' value\n", arg_len);
 				return return_ptr;
+			} else {
+				debugPrintf("[!] Unable to extract binary data - buffer len: %d \n", parser->length);
+				if (size != NULL) *size = 0;
+				return &empty_string;
 			}
-		}
-	}
+		} else {
+			debugPrintf("[!] Unable to extract binary data - wrong type: %d \n", arg_type);
+			if (size != NULL) *size = 0;
+			return &empty_string;
 
-	MSVCRT$printf("[!] Error extracting binary data - length: %d (%d)\n", parser->length, 2*sizeof(uint32_t));
-	return empty_string;
+		}
+	} 
+
+	debugPrintf("[!] Unable to extract binary data - length too short: %d\n", parser->length);
+	if (size != NULL) *size = 0;
+	return &empty_string;
 }
 
 int32_t BeaconDataInt(datap *parser) {
-	MSVCRT$puts("in BeaconDataInt....\n");
+	debugPrintf("[*] BeaconDataInt...%d / %d bytes read\n", parser->size - parser->length, parser->size);
 
 	if (parser->length >= 3 * sizeof(uint32_t)) {
 
@@ -151,21 +182,21 @@ int32_t BeaconDataInt(datap *parser) {
 			uint32_t arg_data = *(uint32_t *)parser->buffer;
 			parser->buffer = parser->buffer + sizeof(uint32_t);
 			parser->length = parser->length - (3 * sizeof(uint32_t));
-			MSVCRT$printf("Returning %d\n", arg_data);
+			debugPrintf("[*] Returning %d\n", arg_data);
 			return arg_data;
 		} else {
-			MSVCRT$printf("[!] Asked for 4-byte integer, but have type %d, returning 0\n", arg_type);
+			debugPrintf("[!] Asked for 4-byte integer, but have type %d, returning 0\n", arg_type);
 			return 0;
 		}
 	} 
 
-	MSVCRT$printf("[!] Asked for int, but not enough left in our buffer so returning 0\n");
+	debugPrintf("[!] Asked for int, but not enough left in our buffer so returning 0\n");
 
 	return 0;
 }
 
 int16_t BeaconDataShort(datap *parser) {
-	MSVCRT$printf("in BeaconDataShort....length %d\n", parser->length);
+	debugPrintf("[*] BeaconDataShort...%d / %d bytes read\n", parser->size - parser->length, parser->size);
 
 	if (parser->length >= (2*sizeof(uint32_t) + sizeof(uint16_t))) {
 		uint32_t arg_type = *(uint32_t *)parser->buffer;
@@ -184,14 +215,14 @@ int16_t BeaconDataShort(datap *parser) {
 			uint16_t arg_data = *(uint16_t *)parser->buffer;
 			parser->buffer = parser->buffer + sizeof(uint16_t);
 			parser->length = parser->length - (2*sizeof(uint32_t) + sizeof(uint16_t));
-			MSVCRT$printf("Returning %d\n", arg_data);
+			debugPrintf("[*] Returning %d\n", arg_data);
 			return arg_data;
 		} else {
-			MSVCRT$printf("[!] Asked for 2-byte integer, but have type %d, returning 0\n", arg_type);
+			debugPrintf("[!] Asked for 2-byte integer, but have type %d, returning 0\n", arg_type);
 			return 0;
 		}
 	}
-	MSVCRT$printf("[!] Asked for short, but not enough left in our buffer so returning 0\n");
+	debugPrintf("[!] Asked for short, but not enough left in our buffer so returning 0\n");
 
 	return 0;
 }
