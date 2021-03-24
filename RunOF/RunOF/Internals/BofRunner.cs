@@ -18,7 +18,7 @@ namespace RunBOF.Internals
         public ParsedArgs parsed_args;
         public BofRunner(ParsedArgs parsed_args)
         {
-            Logger.Debug("Initialising boff runner");
+            Logger.Debug("Initialising bof runner");
             this.parsed_args = parsed_args;
 
             // first we need a basic IAT to hold function pointers
@@ -30,10 +30,10 @@ namespace RunBOF.Internals
             // It also has a wrapper for the bof entry point (go_wrapper) that allows us to pass arguments. 
             byte[] beacon_funcs;
             string [] resource_names = Assembly.GetExecutingAssembly().GetManifestResourceNames();
-            if (resource_names.Contains("RunBOF.beacon_funcs"))
+            if (resource_names.Contains("RunOF.beacon_funcs"))
             {
                 var ms = new MemoryStream();
-                Stream resStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("RunBOF.beacon_funcs");
+                Stream resStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("RunOF.beacon_funcs");
                 resStream.CopyTo(ms);
                 beacon_funcs = ms.ToArray();
             } else

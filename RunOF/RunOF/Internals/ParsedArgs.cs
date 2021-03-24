@@ -98,8 +98,7 @@ namespace RunBOF.Internals
 
             foreach (var arg in args)
             {
-                // binary data, base64
-                if (arg.StartsWith("-b:"))
+                if (arg.StartsWith("-b:")) //binary data, base64
                 {
                     try
                     {
@@ -109,7 +108,7 @@ namespace RunBOF.Internals
                     {
                         Logger.Error($"Unable to parse OF argument -b as a base64 array: {e}");
                     }
-                } else if (arg.StartsWith("-i:"))
+                } else if (arg.StartsWith("-i:")) //uint32
                 {
                     try
                     {
@@ -120,7 +119,7 @@ namespace RunBOF.Internals
                         Logger.Error($"Unable to parse OF argument -i as a uint32: {e}");
                     }
 
-                } else if (arg.StartsWith("-s:"))
+                } else if (arg.StartsWith("-s:")) //uint16
                 {
                     try
                     {
@@ -131,22 +130,22 @@ namespace RunBOF.Internals
                         Logger.Error($"Unable to parse OF argument -s as a uint16: {e}");
                     }
                 }
-                else if (arg.StartsWith("-z:"))
+                else if (arg.StartsWith("-z:")) //ASCII string
                 {
                     try
                     {
-                        of_args.Add(new OfArg(arg.Substring(3)));
-
+                        of_args.Add(new OfArg(arg.Substring(3) + "\0")); // ensure is null-terminated
+ 
                     }
                     catch (Exception e)
                     {
                         Logger.Error($"Unable to parse OF argument -z as a string: {e}");
                     }
-                } else if (arg.StartsWith("-Z:"))
+                } else if (arg.StartsWith("-Z:")) //UTF-16 string
                 {
                     try
                     {
-                        of_args.Add(new OfArg(Encoding.Unicode.GetBytes(arg.Substring(3))));
+                        of_args.Add(new OfArg(Encoding.Unicode.GetBytes(arg.Substring(3) + "\0\0"))); // ensure is null-terminated
                     }
                     catch (Exception e)
                     {
@@ -210,6 +209,7 @@ Usage:
 ------
 
     -h Show this help text
+    -v Show very verbose logs. In debug builds will also pause before starting the OF to allow you to attach a debugger
 
     One of these is required:
         -f Path to an object file to load
@@ -223,6 +223,8 @@ Usage:
         -z:hello     An ASCII string  (e.g. hello passed to object file)
         -Z:hello     A string that's converted to wchar (e.g. (wchar_t)hello passed to object file)
         -b:aGVsbG8=  A base64 encoded binary blob (decoded binary passed to object file)
+
+        To specify an empty string just leave it blank (e.g. -Z: )
 
       ");
             Environment.Exit(ERROR_INVALID_COMMAND_LINE);

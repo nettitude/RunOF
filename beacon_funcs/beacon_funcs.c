@@ -59,6 +59,8 @@ void go_wrapper() {
 
 	go(argument_buffer, argument_buffer_length);
 	debugPrintf("[*] BOF finished\n");
+	// TEST CODE TO CAUSE A CRASH
+	/*
 	while (1) {
 	HANDLE process_heap = KERNEL32$GetProcessHeap();
 		MSVCRT$printf("CRASH!\n");
@@ -68,7 +70,7 @@ void go_wrapper() {
 	char *ptr = 0;
 
 	*ptr = 0;
-	}
+	}*/
 	debugPrintf("[*] UNMANAGED CODE END\n");
 	KERNEL32$RemoveVectoredExceptionHandler(exception_handler);
 	KERNEL32$ExitThread(0);
@@ -102,11 +104,11 @@ void BeaconPrintf(int type, char *fmt, ...) {
         va_list argp;
         va_start(argp, fmt);
 
-	char callback_output[] = "[ ] CALLBACK_OUTPUT:\t";
-	char callback_output_oem[] = "[ ] CALLBACK_OUTPUT_OEM:\t";
-	char callback_error[] = "[!] CALLBACK_ERROR:\t";
-	char callback_output_utf8[] = "[ ] CALLBACK_OUTPUT_UTF8:\t";
-	char callback_output_unknown[] = "[!] UNKNOWN TYPE:\t";
+	char callback_output[] = "\n[ ] CALLBACK_OUTPUT:\t";
+	char callback_output_oem[] = "\n[ ] CALLBACK_OUTPUT_OEM:\t";
+	char callback_error[] = "\n[!] CALLBACK_ERROR:\t";
+	char callback_output_utf8[] = "\n[ ] CALLBACK_OUTPUT_UTF8:\t";
+	char callback_output_unknown[] = "\n[!] UNKNOWN TYPE:\t";
 
 	char *callback_type_text;
 

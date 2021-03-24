@@ -2,26 +2,79 @@
 
 A tool to run object files, mainly beacon object files (BOF), in .Net.
 
-**Current status:** WIP, most BOFs work, there are some (e.g. WMI) that don't. not all BOF output is captured, and not all funcs are implemented
+**Current status:** WIP. Most BOF files tested work OK. Not all functions are implemented (mostly the BeaconFormat* functions).
 
 ## TODO list
 
 Main things to do are:
 
  - [x] Passing arguments to BOFs
- - [ ] A testing framework (i.e. run a load of BOFs and check it all works)
- - [ ] Command line & integration into Posh (mirror RunPE)
+ - [x] A testing framework (i.e. run a load of BOFs and check it all works)
+ - [ ] Test integration into Posh (mirror RunPE)
  - [x] General tidy up (especially logging)
+
+## Usage
+
+```
+    -h Show this help text
+    -v Show very verbose logs. In debug builds will also pause before starting the OF to allow you to attach a debugger
+
+    One of these is required:
+        -f Path to an object file to load
+        -a Base64 encoded object file
+
+    Optional arguments:
+        These are passed to the object file *in the order they are on the command line*.
+
+        -i:123       A 32 bit integer (e.g. 123 passed to object file)
+        -s:12        A 16 bit integer (e.g. 12 passed to object file)
+        -z:hello     An ASCII string  (e.g. hello passed to object file)
+        -Z:hello     A string that's converted to wchar (e.g. (wchar_t)hello passed to object file)
+        -b:aGVsbG8=  A base64 encoded binary blob (decoded binary passed to object file)
+
+        To specify an empty string just leave it blank (e.g. -Z: )
+```
+
+Some BOF files take arguments, which would normally be parsed and "packed" by the aggressor script. In RunOF you need to provide these, in the same order that they would be packed in the aggressor script. 
+
+So, for example, if a cna file has the following bof_pack statement:
+
+```
+$args = bof_pack($1, "Zs", $targetdir, $subdirs);
+```
+
+Then you would specify the command line as:
+
+```
+RunOF.exe -f <filename> -Z:targetdir -s:subdirs
+```
+
+where targetdir would be a path (like C:\) and -s a 16 bit integer (in this case, 1 to recurse). The ordering and types are important - they must be specified in the same order as in the pack statement for the BOF to read them successfully. 
+
+If you need to specify an empty parameter (e.g. an empty string) then leave it blank (e.g. -Z: ). 
+
+If the BOF file attempts to read an argument that isn't provided then zero is provided for numeric types and an empty string (single null character) for string types. 
+
+
+### Debugging
+
+To enable copious log messages use the -v command line option. 
+
+If you have a debug build, then if the -v flag is passed it will pause before starting the OF thread to allow you to attach a debugger. You can then set a breakpoint at the thread entry address to debug the loaded object file. 
 
 ## Components
 
 ### beacon_funcs
 
-This is the "glue" that sits between our unmanaged object file and managed executable.
+This is the "glue" that sits between our unmanaged object file and managed executable. It contains:
+ - A wrapper function that does some housekeeping and runs the object file entry point
+ - An exception handler so if something goes wrong in the OF it can return an error code and message
+ - Implementations of the Beacon* functions (e.g. BeaconPrintf) that are normally provided by Cobalt Strike
+
 
 ### RunOF
 
-A .Net application that loads the object file into memory, gets it ready for execution and executes it.
+A .Net application that loads the object file into memory, gets it ready for execution and executes it in a new thread.
 
 ## How it all works
 
