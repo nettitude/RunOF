@@ -62,6 +62,15 @@ To enable copious log messages use the -v command line option.
 
 If you have a debug build, then if the -v flag is passed it will pause before starting the OF thread to allow you to attach a debugger. You can then set a breakpoint at the thread entry address to debug the loaded object file. 
 
+## TODO list
+
+Main things to do are:
+
+ - [ ] Passing arguments to BOFs
+ - [ ] A testing framework (i.e. run a load of BOFs and check it all works)
+ - [ ] Command line & integration into Posh (mirror RunPE)
+ - [ ] General tidy up (especially logging)
+
 ## Components
 
 ### beacon_funcs
@@ -152,8 +161,6 @@ The datap struct will exist on the stack of the BOF, so the BeaconDataParse func
 The buffer pointer should be passed to the BOF, along with its length. 
 
 Then each of the BeaconData{Int, Short, Extract} functions need to read the type at the current pointer position, if it matches what we expect then read out the data using the length field and return it. 
-
-
 
 
 Questions: 
