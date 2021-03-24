@@ -25,6 +25,7 @@ namespace RunBOF.Internals
         //private IntPtr iat;
         private IAT iat;
         public IntPtr global_buffer { get; private set; }
+        public IntPtr global_buffer_size_ptr {get; private set;}
         public int global_buffer_size { get; set; } = 1024;
         public IntPtr argument_buffer { get; private set; }
         public int argument_buffer_size { get; set; }
@@ -128,7 +129,7 @@ namespace RunBOF.Internals
         {
             Logger.Debug("Looking for beacon helper functions");
             bool global_buffer_found = false;
-            bool global_buffer_maxlen_found = false;
+            bool global_buffer_len_found = false;
             bool argument_buffer_found = false;
             bool argument_buffer_length_found = false;
             IntPtr entry_addr = IntPtr.Zero;
@@ -145,17 +146,21 @@ namespace RunBOF.Internals
                 }
                 else if (symbol_name == this.HelperPrefix+"global_buffer")
                 {
-                    if (this.global_buffer == IntPtr.Zero)
-                    {
-                        this.global_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)this.global_buffer_size, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
-                        Logger.Debug($"Allocated a {this.global_buffer_size} bytes global buffer @ {this.global_buffer.ToInt64():X}");
-                    }
+
+                    var heap_handle = NativeDeclarations.GetProcessHeap();
+                    var mem = NativeDeclarations.HeapAlloc(heap_handle, (uint)NativeDeclarations.HeapAllocFlags.HEAP_ZERO_MEMORY, (uint)this.global_buffer_size);
+                    //this.global_buffer = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)this.global_buffer_size, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_READWRITE);
+                    Logger.Debug($"Allocated a {this.global_buffer_size} bytes global buffer @ {mem.ToInt64():X}");
+
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
 
                     Logger.Debug("Found global buffer");
                     Logger.Debug($"\t[=] Address: {symbol_addr.ToInt64():X}");
-                    //write the address of the global buffer we allocated
-                    Marshal.WriteIntPtr(symbol_addr, this.global_buffer);
+                    //write the address of the global buffer we allocated to allow it to move around (e.g. realloc)
+                    Marshal.WriteIntPtr(symbol_addr, mem);
+                    this.global_buffer = symbol_addr;
+                    // save the location of our global_buffer_ptr
+
                     global_buffer_found = true;
                 }
                 else if (symbol_name == this.HelperPrefix + "argument_buffer")
@@ -184,7 +189,7 @@ namespace RunBOF.Internals
                     argument_buffer_length_found = true;
 
                 }
-                else if (symbol_name == this.HelperPrefix+"global_buffer_maxlen")
+                else if (symbol_name == this.HelperPrefix+"global_buffer_len")
                 {
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
                     // write the maximum size of the buffer TODO - this shouldn't be hardcoded
@@ -192,7 +197,8 @@ namespace RunBOF.Internals
                     //Logger.Debug($"\t[=] Address: {symbol_addr.ToInt64():X}");
                     // CAUTION - the sizeo of what you write here MUST match the definition in beacon_funcs.h for global_buffer_maxlen (currently a uint32_t)
                     Marshal.WriteInt32(symbol_addr, this.global_buffer_size);
-                    global_buffer_maxlen_found = true;
+                    this.global_buffer_size_ptr = symbol_addr;
+                    global_buffer_len_found = true;
 
                 }
                 else if (symbol_name == this.HelperPrefix+this.EntryWrapperSymbol)
@@ -213,7 +219,7 @@ namespace RunBOF.Internals
                 }
 
             }
-            if (!global_buffer_found || !global_buffer_maxlen_found || !argument_buffer_found || !argument_buffer_length_found) throw new Exception($"Unable to find a required symbol in your helper object: global_buffer: {global_buffer_found} \nglobal_buffer_maxlen: {global_buffer_maxlen_found} \nargument_buffer: {argument_buffer_found} \nargument_buffer_length: {argument_buffer_length_found}");
+            if (!global_buffer_found || !global_buffer_len_found || !argument_buffer_found || !argument_buffer_length_found) throw new Exception($"Unable to find a required symbol in your helper object: global_buffer: {global_buffer_found} \nglobal_buffer_len: {global_buffer_len_found} \nargument_buffer: {argument_buffer_found} \nargument_buffer_length: {argument_buffer_length_found}");
             if (entry_addr == IntPtr.Zero) throw new Exception($"Unable to find entry point {this.HelperPrefix+this.EntryWrapperSymbol}");
             return entry_addr;
         }

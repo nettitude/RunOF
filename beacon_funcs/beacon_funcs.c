@@ -8,11 +8,12 @@
 
 LONG WINAPI VectoredExceptionHandler(struct _EXCEPTION_POINTERS *ExceptionInfo) {
 	MSVCRT$printf("\n EXCEPTION \n --------- \n Exception while running object file: %X\n --------- \n\n", ExceptionInfo->ExceptionRecord->ExceptionCode);
+	MSVCRT$printf("\n Have handle: %p, %x\n", thread_handle, *(char *)thread_handle);
 	KERNEL32$ExitThread(-1);
+	//KERNEL32$TerminateThread(thread_handle, -1);
 }
 
 char empty_string[2] = "\x00\x00";
-
 void debugPrintf(char *fmt, ...) {
 	va_list argp;
 
@@ -25,62 +26,118 @@ void debugPrintf(char *fmt, ...) {
 
 // we have a wrapper around our go function to change our globals into parameters
 // because we can't pass args in a usual way to the new thread
+// We can also do some housekeeping/setup here
 void go_wrapper() {
-	KERNEL32$AddVectoredExceptionHandler(0, VectoredExceptionHandler);
+	void *exception_handler = KERNEL32$AddVectoredExceptionHandler(0, VectoredExceptionHandler);
 	debugPrintf("[*] --- UNMANAGED CODE START --- \n");
 	debugPrintf("[*] --- Calling BOF go() function --- \n");
 	
+	thread_handle = KERNEL32$GetCurrentThread();
+
+	// setup our output buffer
+	// global_buffer should have already been allocated by the loader
+	global_buffer_cursor = global_buffer;
+	global_buffer_remaining = global_buffer_len;
 
 	go(argument_buffer, argument_buffer_length);
 	debugPrintf("[*] BOF finished\n");
-
 	//char *ptr = 0;
 	//*ptr = 0;
 	debugPrintf("[*] UNMANAGED CODE END\n");
+	KERNEL32$RemoveVectoredExceptionHandler(exception_handler);
 	KERNEL32$ExitThread(0);
 	
 }
 
 
+void ReallocOutputBuffer(size_t increment_size) {
+	HANDLE process_heap = KERNEL32$GetProcessHeap();
+	increment_size = increment_size + 1024;
+	debugPrintf("[*] Reallocating global output buffer to new size %d\n", global_buffer_len + increment_size);
+
+	size_t cursor_offset = global_buffer_cursor - global_buffer;
+
+	global_buffer = KERNEL32$HeapReAlloc(process_heap, HEAP_ZERO_MEMORY, global_buffer,  global_buffer_len + increment_size);
+
+	if (global_buffer == NULL) {
+		MSVCRT$printf("[!!] Unable to realloc output buffer - exiting BOF\n");
+		KERNEL32$ExitThread(-1);
+	}
+
+	global_buffer_cursor = global_buffer + cursor_offset;
+	global_buffer_len += increment_size;
+	global_buffer_remaining += increment_size;
+
+}
+
 // Output functions
 
+// Instead of printing to the console, this saves the fomatted string into the global buffer
 void BeaconPrintf(int type, char *fmt, ...) {
+        va_list argp;
+        va_start(argp, fmt);
+
+	char callback_output[] = "[ ] CALLBACK_OUTPUT\t";
+	char callback_output_oem[] = "[ ] CALLBACK_OUTPUT_OEM\t";
+	char callback_error[] = "[!] CALLBACK_ERROR\t";
+	char callback_output_utf8[] = "[ ] CALLBACK_OUTPUT_UTF8\t";
+	char callback_output_unknown[] = "[!] UNKNOWN TYPE\t";
+
+	char *callback_type_text;
+
+
         switch (type) {
                 // from beacon.h
                 case 0x0:
-                        MSVCRT$printf("\tCALLBACK_OUTPUT\n");
+			callback_type_text = callback_output;
                         break;
                 case 0x1e:
-                        MSVCRT$printf("\tCALLBACK_OUTPUT_OEM\n");
+			callback_type_text = callback_output_oem;
                         break;
                 case 0x0d:
-                        MSVCRT$printf("\tCALLBACK_ERROR\n");
+			callback_type_text = callback_error;
                         break;
                 case 0x20:
-                        MSVCRT$printf("\tCALLBACK_OUTPUT_UTF8\n");
+			callback_type_text = callback_output_utf8;
                         break;
                 default:
-                        MSVCRT$printf("\tUnknown type...%d\n", type);
+			callback_type_text = callback_output_unknown;
+			debugPrintf("[!] Unknown callback type %d supplied in BeaconPrintf\n", type);
                         break;
         }
-        va_list argp;
-        va_start(argp, fmt);
-	MSVCRT$vsnprintf(global_buffer, global_buffer_maxlen, fmt, argp);
-        MSVCRT$vprintf(fmt, argp);
+
+
+	// Check length and realloc here
+	if ((MSVCRT$strlen(callback_type_text) + MSVCRT$vsnprintf(NULL, 0, fmt, argp)) > global_buffer_remaining) {
+		ReallocOutputBuffer(MSVCRT$strlen(callback_type_text) + MSVCRT$vsnprintf(NULL, 0, fmt, argp));
+	}
+
+
+	size_t written = 0;
+
+	written = MSVCRT$vprintf(global_buffer_cursor, callback_type_text);
+	global_buffer_cursor += written;
+	global_buffer_remaining -= written;
+
+	written = MSVCRT$vsnprintf(global_buffer_cursor, global_buffer_len, fmt, argp);
+	global_buffer_cursor += written;
+	global_buffer_remaining -= written;
+
+
         va_end(argp);
 	return;
 };
 
 void BeaconOutput(int type, char *data, int len) {
-	debugPrintf("in BeaconOutput\n");
-	// This needs a lot of work :)
-	
-	if (len > global_buffer_maxlen) {
-		MSVCRT$memcpy(global_buffer, data, global_buffer_maxlen);
-	} else {
-		MSVCRT$memcpy(global_buffer, data, len);
+	debugPrintf("in BeaconOutput - received %d bytes\n", len);
+	//hexdump(data, len);
+	// check we have space in out output buffer
+	if (len > global_buffer_remaining) {
+		ReallocOutputBuffer(len);
 	}
-
+	MSVCRT$memcpy(global_buffer_cursor, data, len);
+	global_buffer_cursor += len;
+	global_buffer_remaining -= len;
 }
 
 void hexdump(char * buffer, int len) {

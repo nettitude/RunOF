@@ -91,11 +91,18 @@ namespace RunBOF.Internals
 
 
             // try reading from our shared buffer
+            // the buffer may have moved (e.g. if realloc'd) so we need to get its latest address
+            var output_addr = Marshal.ReadIntPtr(beacon_helper.global_buffer);
+            // NB this is the size of the allocated buffer, not its contents - this may or may not be an issue depending on what is written
+            var output_size = Marshal.ReadInt32(beacon_helper.global_buffer_size_ptr);
+
+            Logger.Debug($"Output buffer size {output_size} located at {output_addr.ToInt64():X}");
+
             List<byte> output = new List<byte>();
 
             byte c;
             int i = 0;
-            while ((c = Marshal.ReadByte(beacon_helper.global_buffer + i)) != '\0' && i < beacon_helper.global_buffer_size) {
+            while ((c = Marshal.ReadByte(output_addr + i)) != '\0' && i < output_size) {
                 output.Add(c);
                 i++;
             }

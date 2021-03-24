@@ -6,14 +6,24 @@ WINBASEAPI int __cdecl MSVCRT$vprintf(const char * __restrict__ format,va_list a
 WINBASEAPI int __cdecl MSVCRT$printf(const char * __restrict__ format, ...);
 WINBASEAPI int __cdecl MSVCRT$memcpy(void * __restrict__ _Dst,const void * __restrict__ _Src,size_t _MaxCount);
 WINBASEAPI int __cdecl MSVCRT$vsnprintf(char * __restrict__ d,size_t n,const char * __restrict__ format,va_list arg);
+WINBASEAPI int __cdecl MSVCRT$snprintf(char * __restrict__ d,size_t n,const char * __restrict__ format,...);
+WINBASEAPI size_t __cdecl MSVCRT$strlen(const char * __restrict__ str);
 WINBASEAPI void *__cdecl MSVCRT$calloc(size_t _NumOfElements, size_t _SizeOfElements);
 
 WINBASEAPI void * WINAPI KERNEL32$VirtualAlloc (LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
-WINBASEAPI void WINAPI KERNEL32$AddVectoredExceptionHandler (ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+WINBASEAPI void * WINAPI KERNEL32$AddVectoredExceptionHandler (ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+WINBASEAPI ULONG WINAPI KERNEL32$RemoveVectoredExceptionHandler (void * Handler);
+WINBASEAPI HANDLE WINAPI KERNEL32$GetProcessHeap ();
+WINBASEAPI HANDLE WINAPI KERNEL32$HeapReAlloc (HANDLE hHeap, DWORD dwFlags, LPVOID lpMem, size_t dwBytes);
+WINBASEAPI HANDLE WINAPI KERNEL32$GetCurrentThread();
+WINBASEAPI VOID WINAPI KERNEL32$TerminateThread(HANDLE hThread, DWORD dwExitCode);
+
 WINBASEAPI void WINAPI KERNEL32$ExitThread(DWORD dwExitCode);
 
 char *global_buffer;
-uint32_t global_buffer_maxlen;
+char *global_buffer_cursor;
+uint32_t global_buffer_len;
+uint32_t global_buffer_remaining;
 
 char *argument_buffer;
 uint32_t argument_buffer_length;
@@ -28,10 +38,10 @@ enum arg_types {
 	WCHR_STR
 };
 
-
+HANDLE thread_handle;
 // declare this as an import, so that our loader can fill in its address
 DECLSPEC_IMPORT void go(IN PCHAR Buffer, IN ULONG Length);
-
+void hexdump(char *buffer, int len);
 
 /*
  * Beacon Object Files (BOF)

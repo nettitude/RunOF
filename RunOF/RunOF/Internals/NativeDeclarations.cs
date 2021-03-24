@@ -53,6 +53,12 @@ namespace RunBOF.Internals
             [DllImport("kernel32")]
             public static extern IntPtr VirtualAlloc(IntPtr lpStartAddr, uint size, uint flAllocationType, uint flProtect);
 
+            [DllImport("kernel32")]
+            public static extern IntPtr GetProcessHeap();
+
+            [DllImport("kernel32")]
+            public static extern IntPtr HeapAlloc(IntPtr hHeap, uint dwFlags, uint dwBytes);
+
             [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
             public static extern IntPtr LoadLibrary(string lpFileName);
 
@@ -155,6 +161,14 @@ namespace RunBOF.Internals
                 PAGE_GUARD = 0x00000100,
                 PAGE_NOCACHE = 0x00000200,
                 PAGE_WRITECOMBINE = 0x00000400
+            }
+
+            public enum HeapAllocFlags : uint
+            {
+            HEAP_GENERATE_EXCEPTIONS = 0x00000004,
+            HEAP_NO_SERIALIZE = 0x00000001,
+            HEAP_ZERO_MEMORY = 0x00000008,
+
             }
 
             public enum StateEnum : uint
