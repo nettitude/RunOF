@@ -46,7 +46,8 @@ namespace RunBOF.Internals
                 if (iat != null)
                 {
                     this.iat = iat;
-                } else
+                }
+                else
                 {
                     this.iat = new IAT();
                 }
@@ -116,6 +117,20 @@ namespace RunBOF.Internals
                 section_headers.ForEach(ResolveRelocs);
 
 
+                // Compilers use different prefixes to symbols depending on architecture. 
+                // There might be other naming conventions for functions imported in different ways, but I'm not sure.
+                if (this.BofArch == ARCH.I386)
+                {
+                    this.ImportPrefix = "__imp__";
+                    this.HelperPrefix = "_"; // This I think means a global function
+                    this.EntrySymbol = "_go";
+                }
+                else if (this.BofArch == ARCH.AMD64)
+                {
+                    this.ImportPrefix = "__imp_";
+                    this.EntrySymbol = "go";
+                    this.HelperPrefix = String.Empty;
+                }
             }
             catch (Exception e)
             {
@@ -133,6 +148,7 @@ namespace RunBOF.Internals
             bool argument_buffer_found = false;
             bool argument_buffer_length_found = false;
             IntPtr entry_addr = IntPtr.Zero;
+
             foreach (var symbol in this.symbols) 
             {
                 var symbol_name = GetSymbolName(symbol);
@@ -182,12 +198,12 @@ namespace RunBOF.Internals
                 {
                     Logger.Debug($"Setting argument length to {(uint)serialised_args.Length}");
                     this.argument_buffer_size = serialised_args.Length;
+
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
                     // CAUTION - the sizeo of what you write here MUST match the definition in beacon_funcs.h for argument_buffer_len (currently a uint32_t)
 
                     Marshal.WriteInt32(symbol_addr, this.argument_buffer_size);
                     argument_buffer_length_found = true;
-
                 }
                 else if (symbol_name == this.HelperPrefix+"global_buffer_len")
                 {
@@ -208,6 +224,7 @@ namespace RunBOF.Internals
                 }
                 else if (symbol_name == this.HelperPrefix + "global_debug_flag") {
                     var symbol_addr = new IntPtr(this.base_addr.ToInt64() + symbol.Value + this.section_headers[(int)symbol.SectionNumber - 1].PointerToRawData);
+
 
                     if (debug)
                     {
@@ -307,6 +324,7 @@ namespace RunBOF.Internals
 
                     IMAGE_RELOCATION reloc = Deserialize<IMAGE_RELOCATION>(struct_bytes);
                     Logger.Debug($"Got reloc info: {reloc.VirtualAddress:X} - {reloc.SymbolTableIndex:X} - {reloc.Type} - @ { (this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress).ToInt64():X}");
+
                     if ((int)reloc.SymbolTableIndex > this.symbols.Count || (int)reloc.SymbolTableIndex < 0)
                     {
                         throw new Exception($"Unable to parse relocation # {i+1} symbol table index - {reloc.SymbolTableIndex}");
@@ -321,6 +339,7 @@ namespace RunBOF.Internals
 
                         if (symbol_name.StartsWith(this.ImportPrefix + "Beacon") || symbol_name.StartsWith(this.ImportPrefix + "toWideChar"))
                         {
+
                             Logger.Debug("We need to provide this function");
                             // we need to write the address of the IAT entry for the function to this location
 
@@ -336,10 +355,12 @@ namespace RunBOF.Internals
                             // in this case, it seems to want the address itself??
                             func_addr = this.iat.Add(this.InternalDLLName, this.EntrySymbol, IntPtr.Zero);
 
+
                         }
                         else
                         {
                             // This is a win32 api function
+
                             Logger.Debug("Win32API function");
 
                             string symbol_cleaned = symbol_name.Replace(this.ImportPrefix, "");
@@ -367,6 +388,7 @@ namespace RunBOF.Internals
                                 // TODO - some of the CS SA BOFs have no prefix?? Is this what CobalStrike does?kh
                                 dll_name = "KERNEL32";
                                 func_name = symbol_cleaned.Split('@')[0];
+
                             }
 
                             func_addr = this.iat.Resolve(dll_name, func_name);
@@ -377,12 +399,14 @@ namespace RunBOF.Internals
                         IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
                         Int64 current_value = Marshal.ReadInt32(reloc_location);
                         Logger.Debug($"Current value: {current_value:X}");
+
                         // How we write our relocation depends on the relocation type and architecture
                         // Note - "in the wild" most of these are not used, which makes it a bit difficult to test. 
                         // For example, in all the BOF files I've seen only four are actually used. 
                         // An exception will be thrown if not supported
                         // TODO - we should refactor this, but my head is hurting right now. 
                         // TODO - need to check when in 64 bit mode that any 32 bit relocation's don't overflow (will .net do this for free?)
+
                         switch (reloc.Type)
                         {
 #if _I386
@@ -434,6 +458,7 @@ namespace RunBOF.Internals
                                 throw new Exception($"Unable to process function relocation type {reloc.Type} - please file a bug report.");
                     }
                         Logger.Debug($"\tWrite relocation to {reloc_location.ToInt64():X}");
+
 
                     }
                     else

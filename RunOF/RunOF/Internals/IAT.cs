@@ -46,6 +46,7 @@ namespace RunBOF.Internals
         {
 #if _I386
             Logger.Debug($"Adding {dll_name+ "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 4):X}");
+
             Marshal.WriteInt32(this.iat_addr + (this.iat_count * 4), func_address.ToInt32());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 4));
             this.iat_count++;
@@ -55,6 +56,7 @@ namespace RunBOF.Internals
 
 #elif _AMD64
             Logger.Debug($"Adding {dll_name + "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 8):X}");
+
 
             Marshal.WriteInt64(this.iat_addr + (this.iat_count * 8), func_address.ToInt64());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 8));
