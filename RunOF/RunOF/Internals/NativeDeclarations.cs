@@ -171,6 +171,14 @@ namespace RunBOF.Internals
 
             }
 
+        public enum WaitEventEnum : uint
+        {
+            WAIT_ABANDONED = 0x00000080,
+            WAIT_OBJECT_0 = 00000000,
+            WAIT_TIMEOUT  = 00000102,
+            WAIT_FAILED = 0xFFFFFFFF,
+        }
+
             public enum StateEnum : uint
             {
                 MEM_COMMIT = 0x1000,

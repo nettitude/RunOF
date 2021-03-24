@@ -27,6 +27,7 @@ namespace RunBOF.Internals
                 this.debug = true;
             }
 
+            if (args.Contains("-h")) PrintUsageAndExit();
 
             Logger.Debug($"Parsing {args.Length} Arguments: {string.Join(" ", args)}");
             of_args = new List<OfArg>();
@@ -195,7 +196,35 @@ namespace RunBOF.Internals
 
         private void PrintUsageAndExit()
         {
-            Console.WriteLine("Stuff here");
+            Console.Write(@"
+    ____              ____  ______
+   / __ \__  ______  / __ \/ ____/
+  / /_/ / / / / __ \/ / / / /_    
+ / _, _/ /_/ / / / / /_/ / __/    
+/_/ |_|\__,_/_/ /_/\____/_/       
+                                  
+
+Run object files from c# (inc. Beacon Object Files)
+
+Usage:
+------
+
+    -h Show this help text
+
+    One of these is required:
+        -f Path to an object file to load
+        -a Base64 encoded object file
+
+    Optional arguments:
+        These are passed to the object file *in the order they are on the command line*.
+
+        -i:123       A 32 bit integer (e.g. 123 passed to object file)
+        -s:12        A 16 bit integer (e.g. 12 passed to object file)
+        -z:hello     An ASCII string  (e.g. hello passed to object file)
+        -Z:hello     A string that's converted to wchar (e.g. (wchar_t)hello passed to object file)
+        -b:aGVsbG8=  A base64 encoded binary blob (decoded binary passed to object file)
+
+      ");
             Environment.Exit(ERROR_INVALID_COMMAND_LINE);
 
         }

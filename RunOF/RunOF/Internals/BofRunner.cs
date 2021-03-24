@@ -73,7 +73,12 @@ namespace RunBOF.Internals
             Logger.Info($"Starting bof in new thread @ {this.entry_point.ToInt64():X}");
             Logger.Debug(" --- MANAGED CODE END --- ");
             IntPtr hThread = NativeDeclarations.CreateThread(IntPtr.Zero, 0, this.entry_point, IntPtr.Zero, 0, IntPtr.Zero);
-            NativeDeclarations.WaitForSingleObject(hThread, (uint)(parsed_args.thread_timeout));
+            var resp = NativeDeclarations.WaitForSingleObject(hThread, (uint)(parsed_args.thread_timeout));
+
+            if (resp == (uint)NativeDeclarations.WaitEventEnum.WAIT_TIMEOUT)
+            {
+                Logger.Info($"BOF timed out after {parsed_args.thread_timeout / 1000} seconds");
+            }
 
             Console.Out.Flush();
             Logger.Debug(" --- MANAGED CODE START --- ");
