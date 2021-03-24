@@ -2,18 +2,36 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <excpt.h>
+#include <winerror.h>
 #include "beacon_funcs.h"
 
 /* Helper functions */
 
+char empty_string[2] = "\x00\x00";
+
+// Handle exceptions so we don't crash our calling app. 
+// This is perhaps a little bit ott
 LONG WINAPI VectoredExceptionHandler(struct _EXCEPTION_POINTERS *ExceptionInfo) {
-	MSVCRT$printf("\n EXCEPTION \n --------- \n Exception while running object file: %X\n --------- \n\n", ExceptionInfo->ExceptionRecord->ExceptionCode);
-	MSVCRT$printf("\n Have handle: %p, %x\n", thread_handle, *(char *)thread_handle);
-	KERNEL32$ExitThread(-1);
-	//KERNEL32$TerminateThread(thread_handle, -1);
+	LPTSTR errorText = NULL;
+	MSVCRT$printf("\n EXCEPTION \n --------- \n ");
+	HMODULE hNtDll = KERNEL32$LoadLibraryA("NTDLL.DLL");
+	if (hNtDll != NULL) {
+
+		DWORD msg_len = FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_HMODULE, hNtDll, NTDLL$RtlNtStatusToDosError(ExceptionInfo->ExceptionRecord->ExceptionCode), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&errorText, 0, NULL);
+		if (errorText != NULL) {
+		MSVCRT$printf("Exception while running object file: %s @ %p [0x%X]\n --------- \n\n", errorText, ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionCode);
+		}
+
+	} else {
+
+		MSVCRT$printf("Exception while running object file: \n @ %p [0x%X]\n --------- \n\n", ExceptionInfo->ExceptionRecord->ExceptionAddress, ExceptionInfo->ExceptionRecord->ExceptionCode);
+	}
+	//KERNEL32$ExitThread(-1);
+	//. Changed to terminate thread as was having issues with exit thread trying to free heap allocations, which was fine, except when the exception is a heap corruption..
+	KERNEL32$TerminateThread(thread_handle, -1);
 }
 
-char empty_string[2] = "\x00\x00";
+
 void debugPrintf(char *fmt, ...) {
 	va_list argp;
 
@@ -41,8 +59,16 @@ void go_wrapper() {
 
 	go(argument_buffer, argument_buffer_length);
 	debugPrintf("[*] BOF finished\n");
-	//char *ptr = 0;
-	//*ptr = 0;
+	while (1) {
+	HANDLE process_heap = KERNEL32$GetProcessHeap();
+		MSVCRT$printf("CRASH!\n");
+	global_buffer = KERNEL32$HeapReAlloc(process_heap, HEAP_ZERO_MEMORY, global_buffer - 100,  global_buffer_len +1000);
+
+
+	char *ptr = 0;
+
+	*ptr = 0;
+	}
 	debugPrintf("[*] UNMANAGED CODE END\n");
 	KERNEL32$RemoveVectoredExceptionHandler(exception_handler);
 	KERNEL32$ExitThread(0);
@@ -67,7 +93,6 @@ void ReallocOutputBuffer(size_t increment_size) {
 	global_buffer_cursor = global_buffer + cursor_offset;
 	global_buffer_len += increment_size;
 	global_buffer_remaining += increment_size;
-
 }
 
 // Output functions
@@ -77,11 +102,11 @@ void BeaconPrintf(int type, char *fmt, ...) {
         va_list argp;
         va_start(argp, fmt);
 
-	char callback_output[] = "[ ] CALLBACK_OUTPUT\t";
-	char callback_output_oem[] = "[ ] CALLBACK_OUTPUT_OEM\t";
-	char callback_error[] = "[!] CALLBACK_ERROR\t";
-	char callback_output_utf8[] = "[ ] CALLBACK_OUTPUT_UTF8\t";
-	char callback_output_unknown[] = "[!] UNKNOWN TYPE\t";
+	char callback_output[] = "[ ] CALLBACK_OUTPUT:\t";
+	char callback_output_oem[] = "[ ] CALLBACK_OUTPUT_OEM:\t";
+	char callback_error[] = "[!] CALLBACK_ERROR:\t";
+	char callback_output_utf8[] = "[ ] CALLBACK_OUTPUT_UTF8:\t";
+	char callback_output_unknown[] = "[!] UNKNOWN TYPE:\t";
 
 	char *callback_type_text;
 
@@ -115,11 +140,19 @@ void BeaconPrintf(int type, char *fmt, ...) {
 
 	size_t written = 0;
 
-	written = MSVCRT$vprintf(global_buffer_cursor, callback_type_text);
+	written = MSVCRT$_snprintf(global_buffer_cursor, global_buffer_remaining, callback_type_text);
+	if (written <0) {
+		MSVCRT$printf("[!] Error copying type text in BeaconPrintf\n");
+		return;
+	}
 	global_buffer_cursor += written;
 	global_buffer_remaining -= written;
 
 	written = MSVCRT$vsnprintf(global_buffer_cursor, global_buffer_len, fmt, argp);
+	if (written <0) {
+		MSVCRT$printf("[!] Error copying message text in BeaconPrintf\n");
+		return;
+	}
 	global_buffer_cursor += written;
 	global_buffer_remaining -= written;
 
@@ -151,9 +184,6 @@ void hexdump(char * buffer, int len) {
 }
 
 // Data API
-// TODO 
-//  - handle the length parser element correctly
-//  - check we're not running off the end of the buffer..
 
 void BeaconDataParse (datap * parser, char * buffer, int size) {
 	debugPrintf("[*] Initialising DataParser...global arg length: %d, local length: %d\n", argument_buffer_length, size);

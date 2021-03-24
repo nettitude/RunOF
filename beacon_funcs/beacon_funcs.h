@@ -6,7 +6,7 @@ WINBASEAPI int __cdecl MSVCRT$vprintf(const char * __restrict__ format,va_list a
 WINBASEAPI int __cdecl MSVCRT$printf(const char * __restrict__ format, ...);
 WINBASEAPI int __cdecl MSVCRT$memcpy(void * __restrict__ _Dst,const void * __restrict__ _Src,size_t _MaxCount);
 WINBASEAPI int __cdecl MSVCRT$vsnprintf(char * __restrict__ d,size_t n,const char * __restrict__ format,va_list arg);
-WINBASEAPI int __cdecl MSVCRT$snprintf(char * __restrict__ d,size_t n,const char * __restrict__ format,...);
+WINBASEAPI int __cdecl MSVCRT$_snprintf(char * __restrict__ d,size_t n,const char * __restrict__ format,...);
 WINBASEAPI size_t __cdecl MSVCRT$strlen(const char * __restrict__ str);
 WINBASEAPI void *__cdecl MSVCRT$calloc(size_t _NumOfElements, size_t _SizeOfElements);
 
@@ -17,8 +17,9 @@ WINBASEAPI HANDLE WINAPI KERNEL32$GetProcessHeap ();
 WINBASEAPI HANDLE WINAPI KERNEL32$HeapReAlloc (HANDLE hHeap, DWORD dwFlags, LPVOID lpMem, size_t dwBytes);
 WINBASEAPI HANDLE WINAPI KERNEL32$GetCurrentThread();
 WINBASEAPI VOID WINAPI KERNEL32$TerminateThread(HANDLE hThread, DWORD dwExitCode);
-
 WINBASEAPI void WINAPI KERNEL32$ExitThread(DWORD dwExitCode);
+WINBASEAPI HANDLE WINAPI KERNEL32$LoadLibraryA(LPCSTR lpLibFileName);
+WINBASEAPI ULONG WINAPI NTDLL$RtlNtStatusToDosError(NTSTATUS Status);
 
 char *global_buffer;
 char *global_buffer_cursor;
