@@ -1,24 +1,41 @@
-﻿using RunBOF.Internals;
+﻿using RunOF.Internals;
 using System;
 using System.Runtime.CompilerServices;
 using System.Diagnostics;
 
-namespace RunBOF
+namespace RunOF
 {
     class Program
     {
         private const int ERROR_INVALID_COMMAND_LINE = 0x667;
 
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
-            Logger.Info("Starting RunOF.");
+
+#if _X86
+            Logger.Info("Starting RunOF [x86]");
+#elif _AMD64
+            Logger.Info("Starting RunOF [x64]");
+
+#endif
 
 #if DEBUG
             Logger.Level = Logger.LogLevels.DEBUG;
 #endif
 
+            ParsedArgs ParsedArgs;
+            try
+            {
+                ParsedArgs = new ParsedArgs(args);
 
-            var ParsedArgs = new ParsedArgs(args); 
+            } catch (ArgumentNullException)
+            {
+                return 0;
+            } catch (Exception e)
+            {
+                Logger.Error($"Unable to parse application arguments: \n {e}");
+                return -1;
+            };
 
 
             Logger.Info($"Loading object file {ParsedArgs.filename}");
@@ -57,13 +74,13 @@ namespace RunBOF
                 Logger.Info("Thanks for playing!");
 
                 // Use our thread exit code as our app exit code so we can check for errors easily
-                Environment.Exit(Result.ExitCode);
+                return Result.ExitCode;
 
 
             } catch (Exception e)
             {
                 Logger.Error($"Error! {e}");
-                Environment.Exit(-1);
+                return -1;
             }
 
         }

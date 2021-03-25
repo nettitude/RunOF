@@ -4,7 +4,7 @@ using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using System.Security;
 
-namespace RunBOF.Internals
+namespace RunOF.Internals
 {
     unsafe class NativeDeclarations
     {

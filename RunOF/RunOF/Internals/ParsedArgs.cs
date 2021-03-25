@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RunBOF.Internals
+namespace RunOF.Internals
 {
 
     class ParsedArgs
@@ -27,15 +27,19 @@ namespace RunBOF.Internals
                 this.debug = true;
             }
 
-            if (args.Contains("-h")) PrintUsageAndExit();
+            if (args.Contains("-h"))
+            {
+                PrintUsage();
+                throw new ArgumentNullException();
+            }
 
             Logger.Debug($"Parsing {args.Length} Arguments: {string.Join(" ", args)}");
             of_args = new List<OfArg>();
             // Mandatory arguments are either file (-f) or base 64 encoded bytes(-b)
             if (!args.Contains("-f") && !args.Contains("-a"))
             {
-                PrintUsageAndExit();
-                Environment.Exit(ERROR_INVALID_COMMAND_LINE);
+                PrintUsage();
+                throw new ArgumentException("Invalid Command Line");
             }
 
             if (args.Contains("-f"))
@@ -49,22 +53,24 @@ namespace RunBOF.Internals
                     } catch (Exception e)
                     {
                         Logger.Error($"Unable to read file {filename} : {e}");
-                        Environment.Exit(-1);
+                        throw new ArgumentException($"Unable to open provided filename: {e} ");
                     }
 
                 }
                 catch
                 {
-                    PrintUsageAndExit();
+                    PrintUsage();
+                    throw new ArgumentException("Unable to extract filename from arguments (use -f <filename>");
                 }
             } else if (args.Contains("-a"))
             {
                 try
                 {
                     file_bytes = Convert.FromBase64String(ExtractArg(args, "-a"));
-                } catch
+                } catch (Exception e)
                 {
-                    PrintUsageAndExit();
+                    PrintUsage();
+                    throw new ArgumentException($"Unable to extract binary object file from arguments (use -a <b64_blog> \n {e}");
                 }
 
             }
@@ -88,9 +94,10 @@ namespace RunBOF.Internals
                         Logger.Error("Timeout cannot be less than -1, ignoring");
                     }
 
-                } catch
+                } catch (Exception e)
                 {
-                    PrintUsageAndExit();
+                    PrintUsage();
+                    throw new ArgumentException("Unable to handle timeout argument \n {e}");
                 }
             }
 
@@ -193,7 +200,7 @@ namespace RunBOF.Internals
 
         }
 
-        private void PrintUsageAndExit()
+        private void PrintUsage()
         {
             Console.Write(@"
     ____              ____  ______
@@ -227,7 +234,7 @@ Usage:
         To specify an empty string just leave it blank (e.g. -Z: )
 
       ");
-            Environment.Exit(ERROR_INVALID_COMMAND_LINE);
+            
 
         }
     }

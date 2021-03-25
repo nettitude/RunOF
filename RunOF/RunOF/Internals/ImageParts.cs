@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace RunBOF
+namespace RunOF
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct IMAGE_FILE_HEADER
