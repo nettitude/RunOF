@@ -1,11 +1,11 @@
-﻿using RunBOF.Internals;
+﻿using RunOF.Internals;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Text;
 
-namespace RunBOF.Internals
+namespace RunOF.Internals
 {
     class Coff
     {

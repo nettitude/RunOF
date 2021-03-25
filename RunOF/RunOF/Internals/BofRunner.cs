@@ -7,7 +7,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Reflection;
 
-namespace RunBOF.Internals
+namespace RunOF.Internals
 {
     class BofRunner
     {
@@ -70,7 +70,7 @@ namespace RunBOF.Internals
 
         public BofRunnerOutput RunBof(uint timeout)
         {
-            Logger.Info($"Starting bof in new thread @ {this.entry_point.ToInt64():X}");
+            Logger.Debug($"Starting bof in new thread @ {this.entry_point.ToInt64():X}");
             Logger.Debug(" --- MANAGED CODE END --- ");
             IntPtr hThread = NativeDeclarations.CreateThread(IntPtr.Zero, 0, this.entry_point, IntPtr.Zero, 0, IntPtr.Zero);
             var resp = NativeDeclarations.WaitForSingleObject(hThread, (uint)(parsed_args.thread_timeout));
