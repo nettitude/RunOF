@@ -11,15 +11,16 @@ namespace RunOF.Internals
     class IAT
     {
         private readonly IntPtr iat_addr;
+        private int iat_pages;
         private int iat_count;
         private readonly Dictionary<String, IntPtr> iat_entries;
         public IAT()
         {
-            this.iat_addr = NativeDeclarations.VirtualAlloc(IntPtr.Zero, 1024, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_EXECUTE_READWRITE);
+            this.iat_pages = 2;
+            this.iat_addr = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)(this.iat_pages * Environment.SystemPageSize), NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_EXECUTE_READWRITE);
             this.iat_count = 0;
             this.iat_entries = new Dictionary<string, IntPtr>();
         }
-        // TODO may need to resize IAT memory location. It's also way too big!
         public IntPtr Resolve(string dll_name, string func_name)
         {
             // do we already have it in our IAT table? It not lookup and add
@@ -47,6 +48,10 @@ namespace RunOF.Internals
 #if _I386
             Logger.Debug($"Adding {dll_name+ "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 4):X}");
 
+            if (this.iat_count * 4 > (this.iat_pages * Environment.SystemPageSize))
+            {
+                throw new Exception("Run out of space for IAT entries!");
+            }
             Marshal.WriteInt32(this.iat_addr + (this.iat_count * 4), func_address.ToInt32());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 4));
             this.iat_count++;
@@ -57,6 +62,12 @@ namespace RunOF.Internals
 #elif _AMD64
             Logger.Debug($"Adding {dll_name + "$" + func_name} at address {func_address.ToInt64():X} to IAT address {this.iat_addr.ToInt64() + (this.iat_count * 8):X}");
 
+
+            // check we have space in our IAT table
+            if (this.iat_count * 8 > (this.iat_pages * Environment.SystemPageSize))
+            {
+                throw new Exception("Run out of space for IAT entries!");
+            }
 
             Marshal.WriteInt64(this.iat_addr + (this.iat_count * 8), func_address.ToInt64());
             this.iat_entries.Add(dll_name + "$" + func_name, this.iat_addr + (this.iat_count * 8));
@@ -83,6 +94,18 @@ namespace RunOF.Internals
 
             Marshal.WriteInt64(this.iat_entries[dll_name + "$" + func_name], func_address.ToInt64());
 #endif
+        }
+
+        internal void Clear()
+        {
+            Logger.Debug($"Zeroing and freeing IAT at 0x{this.iat_addr.ToInt64():X} size {this.iat_pages * Environment.SystemPageSize}");
+            // zero out memory
+            NativeDeclarations.ZeroMemory(this.iat_addr, this.iat_pages * Environment.SystemPageSize);
+
+            // free it
+            NativeDeclarations.VirtualFree(this.iat_addr, 0, NativeDeclarations.MEM_RELEASE);
+
+
         }
     }
 }

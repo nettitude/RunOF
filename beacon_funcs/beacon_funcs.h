@@ -9,6 +9,8 @@ WINBASEAPI int __cdecl MSVCRT$vsnprintf(char * __restrict__ d,size_t n,const cha
 WINBASEAPI int __cdecl MSVCRT$_snprintf(char * __restrict__ d,size_t n,const char * __restrict__ format,...);
 WINBASEAPI size_t __cdecl MSVCRT$strlen(const char * __restrict__ str);
 WINBASEAPI void *__cdecl MSVCRT$calloc(size_t _NumOfElements, size_t _SizeOfElements);
+WINBASEAPI void *__cdecl MSVCRT$realloc(void *memblock, size_t size);
+WINBASEAPI void *__cdecl MSVCRT$free(void *memblock);
 
 WINBASEAPI void * WINAPI KERNEL32$VirtualAlloc (LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
 WINBASEAPI void * WINAPI KERNEL32$AddVectoredExceptionHandler (ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
@@ -19,6 +21,7 @@ WINBASEAPI HANDLE WINAPI KERNEL32$GetCurrentThread();
 WINBASEAPI VOID WINAPI KERNEL32$TerminateThread(HANDLE hThread, DWORD dwExitCode);
 WINBASEAPI void WINAPI KERNEL32$ExitThread(DWORD dwExitCode);
 WINBASEAPI HANDLE WINAPI KERNEL32$LoadLibraryA(LPCSTR lpLibFileName);
+WINBASEAPI int WINAPI KERNEL32$MultiByteToWideChar(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr, int cbMultiByte, LPWSTR lpWideCharStr, int cchWideChar);
 WINBASEAPI ULONG WINAPI NTDLL$RtlNtStatusToDosError(NTSTATUS Status);
 
 char *global_buffer;
@@ -104,5 +107,5 @@ DECLSPEC_IMPORT void   BeaconInjectTemporaryProcess(PROCESS_INFORMATION * pInfo,
 DECLSPEC_IMPORT void   BeaconCleanupProcess(PROCESS_INFORMATION * pInfo);
 
 /* Utility Functions */
-DECLSPEC_IMPORT BOOL   toWideChar(char * src, wchar_t * dst, int max);
+extern BOOL   toWideChar(char * src, wchar_t * dst, int max);
 

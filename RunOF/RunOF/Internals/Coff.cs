@@ -13,7 +13,8 @@ namespace RunOF.Internals
         private List<IMAGE_SECTION_HEADER> section_headers;
         private List<IMAGE_SYMBOL> symbols;
         private long string_table;
-        private IntPtr base_addr;
+        internal IntPtr base_addr;
+        internal int size;
         private MemoryStream stream;
         private BinaryReader reader;
         private ARCH MyArch;
@@ -22,6 +23,7 @@ namespace RunOF.Internals
         private string HelperPrefix;
         private string EntryWrapperSymbol = "go_wrapper";
         private string EntrySymbol = "go";
+        private List<Permissions> permissions = new List<Permissions>();
         //private IntPtr iat;
         private IAT iat;
         public IntPtr global_buffer { get; private set; }
@@ -63,12 +65,11 @@ namespace RunOF.Internals
 
                 // Allocate some memory, for now just the whole size of the object file. 
                 // TODO - could just do the memory for the sections and not the header?
-                Logger.Debug($"Allocating {file_contents.Length} bytes");
-                base_addr = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)file_contents.Length, NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_EXECUTE_READWRITE);
-                Logger.Debug($"Mapped image base @ 0x{base_addr.ToInt64():x}");
+                // TODO - memory permissions
+
 
                 // copy across
-                Marshal.Copy(file_contents, 0, base_addr, file_contents.Length);
+                //Marshal.Copy(file_contents, 0, base_addr, file_contents.Length);
 
                 // setup some objects to help us understand the file
                 this.file_header = Deserialize<IMAGE_FILE_HEADER>(file_contents);
@@ -109,8 +110,71 @@ namespace RunOF.Internals
                 FindSymbols();
 
                 // The string table has specified offset, it's just located directly after the last symbol header - so offset is sym_table_offset + (num_symbols * sizeof(symbol))
-                Logger.Debug($"Setting string table offset to {(this.file_header.NumberOfSymbols * Marshal.SizeOf(typeof(IMAGE_SYMBOL))) + this.file_header.PointerToSymbolTable:X}");
+                Logger.Debug($"Setting string table offset to 0x{(this.file_header.NumberOfSymbols * Marshal.SizeOf(typeof(IMAGE_SYMBOL))) + this.file_header.PointerToSymbolTable:X}");
                 this.string_table = (this.file_header.NumberOfSymbols * Marshal.SizeOf(typeof(IMAGE_SYMBOL))) + this.file_header.PointerToSymbolTable;
+
+                // We allocate and copy the file into memory once we've parsed all our section and string information
+                // This is so we can use the section information to only map the stuff we need
+
+                //size = (uint)file_contents.Length;
+
+                // because we need to page align our sections, the overall size may be larger than the filesize
+                // calculate our overall size here
+                int total_pages = 0;
+                foreach (var section_header in this.section_headers)
+                {
+                    int section_pages = (int)section_header.SizeOfRawData / Environment.SystemPageSize;
+                    if (section_header.SizeOfRawData % Environment.SystemPageSize != 0)
+                    {
+                        section_pages++;
+                    }
+
+                    total_pages = total_pages + section_pages;
+                }
+
+                Logger.Debug($"We need to allocate {total_pages} pages of memory");
+                size = total_pages * Environment.SystemPageSize;
+
+                base_addr = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)(total_pages * Environment.SystemPageSize), NativeDeclarations.MEM_RESERVE, NativeDeclarations.PAGE_EXECUTE_READWRITE);
+                Logger.Debug($"Mapped image base @ 0x{base_addr.ToInt64():x}");
+                int num_pages = 0;
+
+                for (int i =0; i<this.section_headers.Count; i++ )
+                {
+                    var section_header = section_headers[i];
+                    Logger.Debug($"Section {Encoding.ASCII.GetString(section_header.Name)} @ {section_header.PointerToRawData:X} sized {section_header.SizeOfRawData:X}");
+                    if (section_header.SizeOfRawData != 0)
+                    {
+                        // how many pages will this section take up?
+                        int section_pages = (int)section_header.SizeOfRawData / Environment.SystemPageSize;
+                        // round up
+                        if (section_header.SizeOfRawData % Environment.SystemPageSize != 0)
+                        {
+                            section_pages++;
+                        }
+                        Logger.Debug($"This section needs {section_pages} pages");
+                        // we allocate section_pages * pagesize bytes
+                        var addr = NativeDeclarations.VirtualAlloc(IntPtr.Add(this.base_addr, num_pages * Environment.SystemPageSize), (uint)(section_pages * Environment.SystemPageSize), NativeDeclarations.MEM_COMMIT, NativeDeclarations.PAGE_EXECUTE_READWRITE);
+                        num_pages+=section_pages;
+                        Logger.Debug($"Copying section to 0x{addr.ToInt64():X}");
+                        // but we only copy sizeofrawdata (which will almost always be less than the amount we allocated)
+                        Marshal.Copy(file_contents, (int)section_header.PointerToRawData, addr, (int)section_header.SizeOfRawData);
+                        Logger.Debug($"Updating section ptrToRawData to {(addr.ToInt64() - this.base_addr.ToInt64()):X}");
+                        // We can't directly modify the section header in the list as it's a struct. 
+                        // TODO - look at using an array rather than a list
+                        // for now, replace it with a new struct with the new offset
+                        var new_hdr = section_headers[i];
+                        new_hdr.PointerToRawData = (uint)(addr.ToInt64() - this.base_addr.ToInt64());
+                        section_headers[i] = new_hdr;
+
+                        // because we change the section header entry to have our new address, it's hard to work out later what permissions apply to what memory pages
+                        // so we record that in this list for future use (post-relocations and patching)
+                        permissions.Add(new Permissions(addr, section_header.Characteristics, num_pages * Environment.SystemPageSize, Encoding.ASCII.GetString(section_header.Name)));
+
+                    }
+                }
+
+                
 
                 // Process relocations
                 Logger.Debug("Processing relocations...");
@@ -136,6 +200,39 @@ namespace RunOF.Internals
             {
                 Logger.Error($"Unable to load object file - {e}");
                 throw (e);
+            }
+
+        }
+
+        public void SetPermissions()
+        {
+            // how do we know if we allocated this section?
+            foreach (var perm in this.permissions)
+            {
+
+
+                bool x = (perm.Characteristics & NativeDeclarations.IMAGE_SCN_MEM_EXECUTE) != 0;
+                bool r = (perm.Characteristics & NativeDeclarations.IMAGE_SCN_MEM_READ) != 0;
+                bool w = (perm.Characteristics & NativeDeclarations.IMAGE_SCN_MEM_WRITE) != 0;
+                uint page_permissions = 0;
+
+                if (x & r & w) page_permissions = NativeDeclarations.PAGE_EXECUTE_READWRITE;
+                if (x & r & !w) page_permissions = NativeDeclarations.PAGE_EXECUTE_READ;
+                if (x & !r & !w) page_permissions = NativeDeclarations.PAGE_EXECUTE;
+
+                if (!x & r & w) page_permissions = NativeDeclarations.PAGE_READWRITE;
+                if (!x & r & !w) page_permissions = NativeDeclarations.PAGE_READONLY;
+                if (!x & !r & !w) page_permissions = NativeDeclarations.PAGE_NOACCESS;
+
+                if (page_permissions == 0)
+                {
+                    throw new Exception($"Unable to parse section memory permissions for section {perm.SectionName}: 0x{perm.Characteristics:x}");
+                }
+
+                Logger.Debug($"Setting permissions for section {perm.SectionName} @ {perm.Addr.ToInt64():X} to R: {r}, W: {w}, X: {x}");
+
+                NativeDeclarations.VirtualProtect(perm.Addr, (UIntPtr)(perm.Size), page_permissions, out _);
+                
             }
 
         }
@@ -241,18 +338,18 @@ namespace RunOF.Internals
             return entry_addr;
         }
 
-        public void StitchEntry()
+        public void StitchEntry(string Entry)
         {
             IntPtr entry = new IntPtr();
-            Logger.Debug($"Finding our entry point ({this.EntrySymbol}() function)");
+            Logger.Debug($"Finding our entry point ({Entry}() function)");
 
             foreach (var symbol in symbols)
             {
 
                 // find the __go symbol address that represents our entry point
-                if (GetSymbolName(symbol).Equals(this.HelperPrefix + this.EntrySymbol))
+                if (GetSymbolName(symbol).Equals(this.HelperPrefix + Entry))
                 {
-                    Logger.Debug($"\tFound our entry symbol {this.HelperPrefix + this.EntrySymbol}");
+                    Logger.Debug($"\tFound our entry symbol {this.HelperPrefix + Entry}");
                     // calculate the address
                     // the formula is our base_address + symbol value + section_offset
                     int i = this.symbols.IndexOf(symbol);
@@ -260,21 +357,62 @@ namespace RunOF.Internals
                     Logger.Debug($"\tFound address {entry.ToInt64():x}");
 
                     // now need to update our IAT with this address
-                    this.iat.Update(this.InternalDLLName, this.EntrySymbol, entry);
+                    this.iat.Update(this.InternalDLLName, Entry, entry);
 
                     break;
                 }
-                // TODO we now need to link this into our go_wrapper function that we got from our helper object, and THAT is what is called so the arguments are provided correctly when the thread starts
-                // go should I think be in our IAT table already
+
             }
 
             if (entry == IntPtr.Zero)
             {
-                Logger.Error("Unable to find entry point! Does your bof have a go() function?");
+                Logger.Error($"Unable to find entry point! Does your bof have a {Entry}() function?");
                 throw new Exception("Unable to find entry point");
             }
 
            
+        }
+
+        internal void Clear()
+        {
+
+            // Note the global_buffer must be cleared *before* the COFF as we need to read its location from the COFF's memory
+            if (this.global_buffer != IntPtr.Zero)
+            {
+
+                Logger.Debug($"Zeroing and freeing loaded global buffer at 0x{this.global_buffer.ToInt64():X} with size 0x{this.global_buffer_size:X}");
+                
+                // the global_buffer can move around if the BOF reallocs to make it bigger so we need to read its final location from memory
+                var output_addr = Marshal.ReadIntPtr(this.global_buffer);
+                var output_size = Marshal.ReadInt32(this.global_buffer_size_ptr);
+
+                NativeDeclarations.ZeroMemory(output_addr, output_size);
+                var heap_handle = NativeDeclarations.GetProcessHeap();
+
+                NativeDeclarations.HeapFree(heap_handle, 0, output_addr);
+            }
+
+            if (this.argument_buffer != IntPtr.Zero)
+            {
+                Logger.Debug($"Zeroing and freeing arg buffer at 0x{this.argument_buffer.ToInt64():X} with size 0x{this.argument_buffer_size:X}");
+
+                NativeDeclarations.ZeroMemory(this.argument_buffer, this.argument_buffer_size);
+                NativeDeclarations.VirtualFree(this.argument_buffer, 0, NativeDeclarations.MEM_RELEASE);
+            }
+
+            Logger.Debug($"Zeroing and freeing loaded COFF image at 0x{this.base_addr:X} with size 0x{this.size:X}");
+
+            // Make sure mem is writeable
+            foreach (var perm in this.permissions)
+            {
+                NativeDeclarations.VirtualProtect(perm.Addr, (UIntPtr)(perm.Size), NativeDeclarations.PAGE_READWRITE, out _);
+
+            }
+            // zero out memory
+            NativeDeclarations.ZeroMemory(this.base_addr, (int)this.size);
+            NativeDeclarations.VirtualFree(this.base_addr, 0, NativeDeclarations.MEM_RELEASE);
+
+
         }
         
 
@@ -465,6 +603,7 @@ namespace RunOF.Internals
                     {
                         Logger.Debug("\tResolving internal reference");
                         IntPtr reloc_location = this.base_addr + (int)section_header.PointerToRawData + (int)reloc.VirtualAddress;
+                        Logger.Debug($"reloc_location: 0x{reloc_location.ToInt64():X}, section offset: 0x{section_header.PointerToRawData:X} reloc VA: {reloc.VirtualAddress:X}");
 #if _I386
                         Int32 current_value = Marshal.ReadInt32(reloc_location);
                         Int32 object_addr;
@@ -627,5 +766,21 @@ namespace RunOF.Internals
         }
 
 
+    }
+
+    class Permissions
+    {
+        internal IntPtr Addr;
+        internal uint Characteristics;
+        internal int Size;
+        internal String SectionName;
+
+        public Permissions(IntPtr addr, uint characteristics, int size, String section_name)
+        {
+            this.Addr = addr;
+            this.Characteristics = characteristics;
+            this.Size = size;
+            this.SectionName = section_name;
+        }
     }
 }

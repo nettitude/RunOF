@@ -50,7 +50,7 @@ void go_wrapper() {
 	debugPrintf("[*] --- UNMANAGED CODE START --- \n");
 	debugPrintf("[*] --- Calling BOF go() function --- \n");
 	
-	thread_handle = KERNEL32$GetCurrentThread();
+	//thread_handle = KERNEL32$GetCurrentThread();
 
 	// setup our output buffer
 	// global_buffer should have already been allocated by the loader
@@ -322,41 +322,91 @@ int16_t BeaconDataShort(datap *parser) {
 
 // Format API
 
+// internal helper function
+void _reallocFormatBuffer(formatp * format, int increment) {
+	int current_offset = format->size - format->length;
+	format->original = MSVCRT$realloc(format->original, increment + format->size);
+
+	if (format->original == NULL) {
+		MSVCRT$puts("[!] Error reallocating format buffer \n");
+		return;
+	}
+
+	format->buffer = format->original + current_offset;
+
+	format->size = format->size + increment;
+	format->length += increment;
+
+}
+
 void BeaconFormatAlloc(formatp * format, int maxsz) {
 	format->original = MSVCRT$calloc(maxsz, 1);
 	format->buffer = format->original;
 	format->length = 0;
 	format->size = maxsz;
-
 }
 
 void BeaconFormatReset(formatp * format) {
-	return;
+	format->length = 0;
+	format->buffer = format->original;
 }
 
 void BeaconFormatFree(formatp * format) {
+	MSVCRT$free(format->original);
+	// I'm not too sure if should set these or not - but this seems safer
+	format->buffer = NULL;
+	format->length = 0;
+	format->size = 0;
 	return;
 }
 
 void BeaconFormatAppend(formatp * format, char * text, int len) {
+	int increment;
+	if (len >= format->length) {
+		// realloc to make space
+		// Our smalled realloc is 1024
+		if (len - format->length < 1024) {
+			increment = 1024;
+		} else {
+			increment = len + 1024;
+		}
+		_reallocFormatBuffer(format, increment);
+	}
+
+	MSVCRT$memcpy(format->buffer, text, len);
 	return;
 }
 
-// This could be dangerous?
 void BeaconFormatPrintf(formatp * format, char * fmt, ... ) {
+	va_list argp;
+	size_t required_size = MSVCRT$vsnprintf(NULL, 0, fmt, argp);
+	if (required_size < format->length) {
+		_reallocFormatBuffer(format, required_size + 1024);
+	}
+	MSVCRT$vsnprintf(format->buffer, format->length, fmt, argp);
 	return;
 }
 
 char * BeaconFormatToString(formatp *format, int * size) {
+	// TODO is this really right? or is there some processing
+
+	*size = MSVCRT$strlen(format->original);
+
+	return format->original;
 }
 
 void BeaconFormatInt(formatp *format, int value) {
+	size_t required_size = MSVCRT$_snprintf(NULL, 0, "%d", value);
+	if (required_size < format->length) {
+		_reallocFormatBuffer(format, required_size + 1024);
+	}
+	MSVCRT$_snprintf(format->buffer, format->length, "%d", value);
 	return;
 }
 
 
 // Token Functions
-// not sure how to implement these
+// not sure if/how to implement these
 BOOL BeaconUseToken(HANDLE token) {
 	MSVCRT$puts("[!] BeaconUseToken is unimplemented - ignoring request\n");
 	return FALSE;
@@ -370,4 +420,12 @@ void BeaconRevertToken() {
 BOOL BeaconIsAdmin() {
 	MSVCRT$puts("[!] BeaconIsAdmin is unimplemented - ignoring request\n");
 	return FALSE;
+}
+
+// Utility Functions
+BOOL toWideChar(char *src, wchar_t *dst, int max) {
+	if (src == NULL || dst == NULL) return FALSE;
+	// max is given *in bytes*, so divide by two to get max for MBTWC
+	KERNEL32$MultiByteToWideChar(CP_ACP, 0, src, -1, dst, max / 2);
+
 }

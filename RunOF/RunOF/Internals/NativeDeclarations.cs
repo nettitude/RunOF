@@ -10,14 +10,27 @@ namespace RunOF.Internals
     {
 
 
-            public static uint MEM_COMMIT = 0x1000;
-            public static uint MEM_RESERVE = 0x2000;
-            public static uint PAGE_EXECUTE_READWRITE = 0x40;
-            public static uint PAGE_READWRITE = 0x04;
-            public static uint PAGE_EXECUTE_READ = 0x20;
+            internal const uint MEM_COMMIT = 0x1000;
+            internal const uint MEM_RESERVE = 0x2000;
+            internal const uint MEM_RELEASE = 0x00008000;
 
 
-            [StructLayout(LayoutKind.Sequential)]
+
+        internal const uint PAGE_EXECUTE_READWRITE = 0x40;
+        internal const uint PAGE_READWRITE = 0x04;
+        internal const uint PAGE_EXECUTE_READ = 0x20;
+        internal const uint PAGE_EXECUTE = 0x10;
+        internal const uint PAGE_EXECUTE_WRITECOPY = 0x80;
+        internal const uint PAGE_NOACCESS = 0x01;
+        internal const uint PAGE_READONLY = 0x02;
+        internal const uint PAGE_WRITECOPY = 0x08;
+
+        internal const uint IMAGE_SCN_MEM_EXECUTE = 0x20000000;
+        internal const uint IMAGE_SCN_MEM_READ = 0x40000000;
+        internal const uint IMAGE_SCN_MEM_WRITE = 0x80000000;
+
+
+        [StructLayout(LayoutKind.Sequential)]
             public unsafe struct IMAGE_BASE_RELOCATION
             {
                 public uint VirtualAdress;
@@ -52,8 +65,13 @@ namespace RunOF.Internals
 
             [DllImport("kernel32")]
             public static extern IntPtr VirtualAlloc(IntPtr lpStartAddr, uint size, uint flAllocationType, uint flProtect);
+       
+            [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+            internal static extern bool VirtualFree(IntPtr pAddress, uint size, uint freeType);
+        [DllImport("kernel32.dll")]
+        public static extern bool HeapFree(IntPtr hHeap, uint dwFlags, IntPtr lpMem);
 
-            [DllImport("kernel32")]
+        [DllImport("kernel32")]
             public static extern IntPtr GetProcessHeap();
 
             [DllImport("kernel32")]
@@ -107,10 +125,19 @@ namespace RunOF.Internals
               uint dwMilliseconds
               );
 
+
+
             [DllImport("kernel32.dll")]
             public static extern bool GetExitCodeThread(IntPtr hThread, out int lpExitcode);
 
-            [StructLayout(LayoutKind.Sequential)]
+
+        [DllImport("Kernel32.dll", EntryPoint = "RtlZeroMemory", SetLastError = false)]
+        public static extern void ZeroMemory(IntPtr dest, int size);
+
+
+
+
+        [StructLayout(LayoutKind.Sequential)]
             public struct PROCESS_BASIC_INFORMATION
             {
                 public uint ExitStatus;
