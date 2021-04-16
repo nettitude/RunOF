@@ -15,6 +15,7 @@ A tool to run object files, mainly beacon object files (BOF), in .Net.
     Optional arguments:
 
         -t <timeout> Set thread timeout (in seconds) - default 30 if not specified
+	-e <entry> Set entry function name - defaults to go
 
         These are passed to the object file *in the order they are on the command line*.
 
@@ -99,9 +100,13 @@ For all imports, a function pointer to the function needs to be returned rather 
 
 The sections have memory permissions (e.g. RW / R / RX) set as per the header flags.
 
-### Locate go() function
+### Locate entry function
 
-In order to pass arguments to the BOF, we needed to implement a wrapper function that exists in our beacon_funcs object and takes our global argument buffer pointer (which exists in our data section) and supplies it to the BOF's go function as a function argument (e.g. in a register for x64 or on the stack for x86). We need therefore to update our go_wrapper function with a pointer to the target BOF's go function. 
+In order to pass arguments to the BOF, we needed to implement a wrapper function that exists in our beacon_funcs object and takes our global argument buffer pointer (which exists in our data section) and supplies it to the BOF's go function as a function argument (e.g. in a register for x64 or on the stack for x86). We need therefore to update our go_wrapper function with a pointer to the target BOF's entry function. 
+
+Usually, a BOF's entry function is called "go", but it is possible to specify an alternative with the -e command line flag.
+
+
 
 ### Execute!
 

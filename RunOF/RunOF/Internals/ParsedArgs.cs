@@ -13,6 +13,7 @@ namespace RunOF.Internals
         internal string filename;
         internal byte[] file_bytes;
         internal int thread_timeout = 30000;
+        internal string entry_name = "go";
         private const int ERROR_INVALID_COMMAND_LINE = 0x667;
         internal List<OfArg> of_args;
         public bool debug = false;
@@ -98,6 +99,19 @@ namespace RunOF.Internals
                 {
                     PrintUsage();
                     throw new ArgumentException("Unable to handle timeout argument \n {e}");
+                }
+            }
+
+            if (args.Contains("-e"))
+            {
+                try
+                {
+                    this.entry_name = ExtractArg(args, "-e");
+
+                } catch(Exception e)
+                { 
+                    PrintUsage();
+                    throw new ArgumentException($"Unable to handle entry point argument \n {e}");
                 }
             }
 
@@ -225,6 +239,7 @@ Usage:
     Optional arguments:
 
         -t <timeout> Set thread timeout (in seconds) - default 30 if not specified
+        -e <entry> Set entry function name - defaults to go 
 
         These are passed to the object file *in the order they are on the command line*.
 

@@ -67,7 +67,7 @@ namespace RunOF.Internals
             this.bof = new Coff(this.parsed_args.file_bytes, this.iat);
             Logger.Debug($"Loaded BOF with entry {this.entry_point.ToInt64():X}");
             // stitch up our go_wrapper and go functions
-            this.bof.StitchEntry();
+            this.bof.StitchEntry(this.parsed_args.entry_name);
 
             this.bof.SetPermissions();
         }

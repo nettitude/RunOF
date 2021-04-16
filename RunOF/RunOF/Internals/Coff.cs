@@ -321,18 +321,18 @@ namespace RunOF.Internals
             return entry_addr;
         }
 
-        public void StitchEntry()
+        public void StitchEntry(string Entry)
         {
             IntPtr entry = new IntPtr();
-            Logger.Debug($"Finding our entry point ({this.EntrySymbol}() function)");
+            Logger.Debug($"Finding our entry point ({Entry}() function)");
 
             foreach (var symbol in symbols)
             {
 
                 // find the __go symbol address that represents our entry point
-                if (GetSymbolName(symbol).Equals(this.HelperPrefix + this.EntrySymbol))
+                if (GetSymbolName(symbol).Equals(this.HelperPrefix + Entry))
                 {
-                    Logger.Debug($"\tFound our entry symbol {this.HelperPrefix + this.EntrySymbol}");
+                    Logger.Debug($"\tFound our entry symbol {this.HelperPrefix + Entry}");
                     // calculate the address
                     // the formula is our base_address + symbol value + section_offset
                     int i = this.symbols.IndexOf(symbol);
@@ -340,17 +340,16 @@ namespace RunOF.Internals
                     Logger.Debug($"\tFound address {entry.ToInt64():x}");
 
                     // now need to update our IAT with this address
-                    this.iat.Update(this.InternalDLLName, this.EntrySymbol, entry);
+                    this.iat.Update(this.InternalDLLName, Entry, entry);
 
                     break;
                 }
-                // TODO we now need to link this into our go_wrapper function that we got from our helper object, and THAT is what is called so the arguments are provided correctly when the thread starts
-                // go should I think be in our IAT table already
+
             }
 
             if (entry == IntPtr.Zero)
             {
-                Logger.Error("Unable to find entry point! Does your bof have a go() function?");
+                Logger.Error($"Unable to find entry point! Does your bof have a {Entry}() function?");
                 throw new Exception("Unable to find entry point");
             }
 
