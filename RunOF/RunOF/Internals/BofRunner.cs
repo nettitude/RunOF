@@ -102,7 +102,7 @@ namespace RunOF.Internals
             // try reading from our shared buffer
             // the buffer may have moved (e.g. if realloc'd) so we need to get its latest address
             var output_addr = Marshal.ReadIntPtr(beacon_helper.global_buffer);
-            // NB this is the size of the allocated buffer, not its contents - this may or may not be an issue depending on what is written
+            // NB this is the size of the allocated buffer, not its contents, and we'll read all of its size - this may or may not be an issue depending on what is written
             var output_size = Marshal.ReadInt32(beacon_helper.global_buffer_size_ptr);
 
             Logger.Debug($"Output buffer size {output_size} located at {output_addr.ToInt64():X}");
@@ -116,13 +116,32 @@ namespace RunOF.Internals
                 i++;
             }
 
+            // Now cleanup all memory...
+
             BofRunnerOutput Response = new BofRunnerOutput();
 
             Response.Output = Encoding.ASCII.GetString(output.ToArray());
             Response.ExitCode = ExitCode;
 
+            ClearMemory();
+
             return Response;
             
+        }
+
+        private void ClearMemory()
+        {
+            /* things that need cleaning up:
+                - beacon_funcs BOF
+                - the bof we ran
+                - all of our input/output buffers
+                - our IAT table
+            */
+            // this.beacon_helper.base_addr, t
+            this.beacon_helper.Clear();
+            this.bof.Clear();
+            this.iat.Clear();
+
         }
     }
 

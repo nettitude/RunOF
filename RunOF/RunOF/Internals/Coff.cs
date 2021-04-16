@@ -13,8 +13,8 @@ namespace RunOF.Internals
         private List<IMAGE_SECTION_HEADER> section_headers;
         private List<IMAGE_SYMBOL> symbols;
         private long string_table;
-        private IntPtr base_addr;
-        private uint size;
+        internal IntPtr base_addr;
+        internal int size;
         private MemoryStream stream;
         private BinaryReader reader;
         private ARCH MyArch;
@@ -115,7 +115,7 @@ namespace RunOF.Internals
                 // We allocate and copy the file into memory once we've parsed all our section and string information
                 // This is so we can use the section information to only map the stuff we need
 
-                size = (uint)file_contents.Length;
+                //size = (uint)file_contents.Length;
 
                 // because we need to page align our sections, the overall size may be larger than the filesize
                 // calculate our overall size here
@@ -132,6 +132,7 @@ namespace RunOF.Internals
                 }
 
                 Logger.Debug($"We need to allocate {total_pages} pages of memory");
+                size = total_pages * Environment.SystemPageSize;
 
                 base_addr = NativeDeclarations.VirtualAlloc(IntPtr.Zero, (uint)(total_pages * Environment.SystemPageSize), NativeDeclarations.MEM_RESERVE, NativeDeclarations.PAGE_EXECUTE_READWRITE);
                 Logger.Debug($"Mapped image base @ 0x{base_addr.ToInt64():x}");
@@ -356,9 +357,46 @@ namespace RunOF.Internals
            
         }
 
-        private void ClearCoff()
+        internal void Clear()
         {
+
+            // Note the global_buffer must be cleared *before* the COFF as we need to read its location from the COFF's memory
+            if (this.global_buffer != IntPtr.Zero)
+            {
+
+                Logger.Debug($"Zeroing and freeing loaded global buffer at 0x{this.global_buffer.ToInt64():X} with size 0x{this.global_buffer_size:X}");
+                
+                // the global_buffer can move around if the BOF reallocs to make it bigger so we need to read its final location from memory
+                var output_addr = Marshal.ReadIntPtr(this.global_buffer);
+                var output_size = Marshal.ReadInt32(this.global_buffer_size_ptr);
+
+                NativeDeclarations.ZeroMemory(output_addr, output_size);
+                var heap_handle = NativeDeclarations.GetProcessHeap();
+
+                NativeDeclarations.HeapFree(heap_handle, 0, output_addr);
+            }
+
+            if (this.argument_buffer != IntPtr.Zero)
+            {
+                Logger.Debug($"Zeroing and freeing arg buffer at 0x{this.argument_buffer.ToInt64():X} with size 0x{this.argument_buffer_size:X}");
+
+                NativeDeclarations.ZeroMemory(this.argument_buffer, this.argument_buffer_size);
+                NativeDeclarations.VirtualFree(this.argument_buffer, 0, NativeDeclarations.MEM_RELEASE);
+            }
+
             Logger.Debug($"Zeroing and freeing loaded COFF image at 0x{this.base_addr:X} with size 0x{this.size:X}");
+
+            // Make sure mem is writeable
+            foreach (var perm in this.permissions)
+            {
+                NativeDeclarations.VirtualProtect(perm.Addr, (UIntPtr)(perm.Size), NativeDeclarations.PAGE_READWRITE, out _);
+
+            }
+            // zero out memory
+            NativeDeclarations.ZeroMemory(this.base_addr, (int)this.size);
+            NativeDeclarations.VirtualFree(this.base_addr, 0, NativeDeclarations.MEM_RELEASE);
+
+
         }
         
 

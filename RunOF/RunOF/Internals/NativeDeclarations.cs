@@ -10,8 +10,11 @@ namespace RunOF.Internals
     {
 
 
-            public static uint MEM_COMMIT = 0x1000;
-            public static uint MEM_RESERVE = 0x2000;
+            internal const uint MEM_COMMIT = 0x1000;
+            internal const uint MEM_RESERVE = 0x2000;
+            internal const uint MEM_RELEASE = 0x00008000;
+
+
 
         internal const uint PAGE_EXECUTE_READWRITE = 0x40;
         internal const uint PAGE_READWRITE = 0x04;
@@ -62,8 +65,13 @@ namespace RunOF.Internals
 
             [DllImport("kernel32")]
             public static extern IntPtr VirtualAlloc(IntPtr lpStartAddr, uint size, uint flAllocationType, uint flProtect);
+       
+            [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+            internal static extern bool VirtualFree(IntPtr pAddress, uint size, uint freeType);
+        [DllImport("kernel32.dll")]
+        public static extern bool HeapFree(IntPtr hHeap, uint dwFlags, IntPtr lpMem);
 
-            [DllImport("kernel32")]
+        [DllImport("kernel32")]
             public static extern IntPtr GetProcessHeap();
 
             [DllImport("kernel32")]
@@ -117,10 +125,19 @@ namespace RunOF.Internals
               uint dwMilliseconds
               );
 
+
+
             [DllImport("kernel32.dll")]
             public static extern bool GetExitCodeThread(IntPtr hThread, out int lpExitcode);
 
-            [StructLayout(LayoutKind.Sequential)]
+
+        [DllImport("Kernel32.dll", EntryPoint = "RtlZeroMemory", SetLastError = false)]
+        public static extern void ZeroMemory(IntPtr dest, int size);
+
+
+
+
+        [StructLayout(LayoutKind.Sequential)]
             public struct PROCESS_BASIC_INFORMATION
             {
                 public uint ExitStatus;
