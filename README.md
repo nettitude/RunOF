@@ -2,17 +2,6 @@
 
 A tool to run object files, mainly beacon object files (BOF), in .Net.
 
-**Current status:** WIP. Most BOF files tested work OK. Not all functions are implemented (mostly the BeaconFormat* functions).
-
-## TODO list
-
-Main things to do are:
-
- - [x] Passing arguments to BOFs
- - [x] A testing framework (i.e. run a load of BOFs and check it all works)
- - [ ] Test integration into Posh (mirror RunPE)
- - [x] General tidy up (especially logging)
-
 ## Usage
 
 ```
@@ -24,6 +13,9 @@ Main things to do are:
         -a Base64 encoded object file
 
     Optional arguments:
+
+        -t <timeout> Set thread timeout (in seconds) - default 30 if not specified
+
         These are passed to the object file *in the order they are on the command line*.
 
         -i:123       A 32 bit integer (e.g. 123 passed to object file)
@@ -55,7 +47,6 @@ If you need to specify an empty parameter (e.g. an empty string) then leave it b
 
 If the BOF file attempts to read an argument that isn't provided then zero is provided for numeric types and an empty string (single null character) for string types. 
 
-
 ### Debugging
 
 To enable copious log messages use the -v command line option. 
@@ -71,6 +62,7 @@ This is the "glue" that sits between our unmanaged object file and managed execu
  - An exception handler so if something goes wrong in the OF it can return an error code and message
  - Implementations of the Beacon* functions (e.g. BeaconPrintf) that are normally provided by Cobalt Strike
 
+Since these will be called from the BOF, they need to be unmanaged code. Therefore, these are written in C, and compiled into an object file using the provided Makefile. This object file is then loaded into memory in the same way as a "normal" BOF, and the addresses of the various Beacon* functions stored to provide to the BOF later.
 
 ### RunOF
 
@@ -78,15 +70,58 @@ A .Net application that loads the object file into memory, gets it ready for exe
 
 ## How it all works
 
-TODO :)
+Object files in Windows are defined by the COFF standard. This is not intended to be directly executed, but it is possible to load and execute as follows:
+
+### Find section info
+
+A COFF file consists of a set of sections (text, rodata, bss etc.) that contain the code and data needed to execute.
+
+### Find symbol information 
+
+A COFF file contains a set of symbols which relate to functions and variables that are either defined within the file (e.g. our "go" function) or that need to be imported
+
+### Load into memory
+
+In order to set permissions later, the sections of the COFF file need to loaded into memory on page aligned boundaries (unlike a PE, COFF sections are not page aligned). This is done by allocating a number of pages large enough to contain the section contents and copying into that region. 
+
+For now, memory is set to RW so we can write relocations to it.
+
+### Resolve relocations
+
+Because an object file is designed to be linked together with others in arbitrary order, each section ends with an array of relocation records that define how to update references to other symbols within the section. These must be processed and the address of the symbol written according to the relocation rule. This also allows us to determine if the symbol is "internal" to the object file, or whether it needs to be resolved. There are two types of resolution:
+
+ - Win32 API calls, in the format LIBRARY$Function. These are currently just resolved with LoadLibrary and GetProcAddress.
+ - Beacon* functions. These are resolved to the addresses loaded in the beacon_functions object file. 
+   
+For all imports, a function pointer to the function needs to be returned rather than the function's address. Therefore, the loader also implements a basic "import address table" (IAT) which is simply an array of function pointers. 
+
+### Set permissions
+
+The sections have memory permissions (e.g. RW / R / RX) set as per the header flags.
+
+### Locate go() function
+
+In order to pass arguments to the BOF, we needed to implement a wrapper function that exists in our beacon_funcs object and takes our global argument buffer pointer (which exists in our data section) and supplies it to the BOF's go function as a function argument (e.g. in a register for x64 or on the stack for x86). We need therefore to update our go_wrapper function with a pointer to the target BOF's go function. 
+
+### Execute!
+
+The code is now executed in a new thread, with a timer set (default 30 seconds, can be changed with the -t flag).
+
+### Retrieve output
+
+The BeaconOutput functions in beacon_funcs write any output the BOF generates into a global_output_buffer, which is allocated on the heap. This buffer can be reallocated to make space for more output, so the .Net assembly must read its new location and size from the BOF's memory before reading the output.
+
+### Cleanup
+
+All memory allocated is zeroed and freed before the application exits.
+
 ### BOF Arguments
 
 BOF files can accept arguments, that in Cobalt land are "packed" before use with the bof_pack command. Fundamentally, this is a buffer containing data values, which can be unpacked in the BOF by using BeaconDataInt, BeaconDataShort etc.
 
 **Note** This interface has been implemented completely independantly of Cobalt (no reverse engineering), so any assumptions/bugs etc. are ours.
 
-
-Proposed implementation:
+Implementation:
 
 The datap data struct remains the same as that defined in beacon.h:
 ```
@@ -98,7 +133,7 @@ datap struct {
 	}
 ```
 
-We will need to implement these functions:
+We implement these functions:
 
  - BeaconDataParse (initialises a data parser - I think less relevant in our context but it will be called)
  - BeaconDataExtract (return a char* or wchar*)
@@ -106,19 +141,20 @@ We will need to implement these functions:
  - BeaconDataLength (data left to parse)
  - BeaconDataShort (int16)
 
-
 The bof_pack function outlines five types of data that can be packed with a format specifier:
 
-| Type| Desciption             | Unpack with       |
-|-----|------------------------|-------------------|
-|  b  | binary data            | BeaconDataExtract |
-|  i  |     4-byte int         |                   |
-|  s  |     2-byte int         |                   |
-|  z  |     zero term string   |                   |
-|  Z  | zert-term wchar string |                   |
+| Type | Desciption             | Unpack with       |
+|------|------------------------|-------------------|
+| b    | binary data            | BeaconDataExtract |
+| i    | 4-byte int             | BeaconDataInt     |
+| s    | 2-byte int             | BeaconDataShort   |
+| z    | zero term string       | BeaconDataExtract |
+| Z    | zert-term wchar string | BeaconDataExtract |
 
 
-I think the best way to handle this is for the buffer in datap to contain TLV values:
+
+The .Net code "serialises" arguments into TLV values, allocates some unmanaged memory and writes its address into a global pointer variable that is in the beacon_functions OF's memory. The TLV encoding is something like this (pseudocode)
+
 
 ```
 
@@ -130,7 +166,7 @@ enum data_types {
     2BYTE_INT,
     STRING,
     WSTRING
-} // as a uint32 - so probs need defines really in C
+} // as a uint32 - a bit overkill for five values!
 
 utin32_t length; 
 
@@ -139,26 +175,14 @@ utin32_t length;
 
   T:STRING  |    LENGTH   | Value   |
 00 00 00 03 | 00 00 00 06 | Hello\0 | 
-
-Multiple TLVs are then stacked together
-
-
 ```
 
-We can treat the buffer like we do the global output buffer at the moment, and pack it with our arguments before the BOF is called. 
-
-The datap struct will exist on the stack of the BOF, so the BeaconDataParse function needs to setup the pointers and values with the globals the C# app has written into place. 
-
-The buffer pointer should be passed to the BOF, along with its length. 
-
-Then each of the BeaconData{Int, Short, Extract} functions need to read the type at the current pointer position, if it matches what we expect then read out the data using the length field and return it. 
+Multiple TLVs are stacked together one after the other in the allocated memory region. The BeaconData* functions then extract values from this memory region. There are a number of constraints imposed by this scheme:
+ - BOF arguments *must* be provided in the order that the BOF expects to receive them. For example, if the BOF calls BeaconDataInt then BeaconDataShort the arguments must be passed as int then short. If they are passed in the wrong order than BeaconDataInt will fail because the type of the first argument will not match. 
+ - Arguments have a maximum length of around 4GB. That should be plenty!
 
 
+## Useful References
 
-
-Questions: 
-
- - We need a wrapper to be able to pass the arguments to our _go function in the normal way.
- - What happens if your arguments are packed in the wrong order? (e.g. you put int, int but the BOF calls BeaconDataExtract - can either error, or find the next matching item?)
- - How do we specify the BOF args on the command line. I'm thinking something like b:[base64data] i:1024 etc.
- - 
+ - https://docs.microsoft.com/en-us/windows/win32/debug/pe-format (especially "Other Contents of the File" section) 
+ - https://docs.microsoft.com/en-us/cpp/build/reference/dumpbin-reference?view=msvc-160
