@@ -12,12 +12,22 @@ namespace RunOF.Internals
 
             public static uint MEM_COMMIT = 0x1000;
             public static uint MEM_RESERVE = 0x2000;
-            public static uint PAGE_EXECUTE_READWRITE = 0x40;
-            public static uint PAGE_READWRITE = 0x04;
-            public static uint PAGE_EXECUTE_READ = 0x20;
+
+        internal const uint PAGE_EXECUTE_READWRITE = 0x40;
+        internal const uint PAGE_READWRITE = 0x04;
+        internal const uint PAGE_EXECUTE_READ = 0x20;
+        internal const uint PAGE_EXECUTE = 0x10;
+        internal const uint PAGE_EXECUTE_WRITECOPY = 0x80;
+        internal const uint PAGE_NOACCESS = 0x01;
+        internal const uint PAGE_READONLY = 0x02;
+        internal const uint PAGE_WRITECOPY = 0x08;
+
+        internal const uint IMAGE_SCN_MEM_EXECUTE = 0x20000000;
+        internal const uint IMAGE_SCN_MEM_READ = 0x40000000;
+        internal const uint IMAGE_SCN_MEM_WRITE = 0x80000000;
 
 
-            [StructLayout(LayoutKind.Sequential)]
+        [StructLayout(LayoutKind.Sequential)]
             public unsafe struct IMAGE_BASE_RELOCATION
             {
                 public uint VirtualAdress;

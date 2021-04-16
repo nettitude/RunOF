@@ -50,7 +50,7 @@ void go_wrapper() {
 	debugPrintf("[*] --- UNMANAGED CODE START --- \n");
 	debugPrintf("[*] --- Calling BOF go() function --- \n");
 	
-	thread_handle = KERNEL32$GetCurrentThread();
+	//thread_handle = KERNEL32$GetCurrentThread();
 
 	// setup our output buffer
 	// global_buffer should have already been allocated by the loader

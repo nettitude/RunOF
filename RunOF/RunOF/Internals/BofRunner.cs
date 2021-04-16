@@ -54,6 +54,8 @@ namespace RunOF.Internals
             // Find our helper functions and entry wrapper (go_wrapper)
             this.entry_point = this.beacon_helper.ResolveHelpers(parsed_args.SerialiseArgs(), parsed_args.debug);
 
+            // this needs to be called after we've finished monkeying around with the BOF's memory
+            this.beacon_helper.SetPermissions();
 
         }
 
@@ -64,8 +66,10 @@ namespace RunOF.Internals
             // create new coff
             this.bof = new Coff(this.parsed_args.file_bytes, this.iat);
             Logger.Debug($"Loaded BOF with entry {this.entry_point.ToInt64():X}");
-            // stitch up our go_wrapper and go_functions
+            // stitch up our go_wrapper and go functions
             this.bof.StitchEntry();
+
+            this.bof.SetPermissions();
         }
 
         public BofRunnerOutput RunBof(uint timeout)
