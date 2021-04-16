@@ -223,6 +223,9 @@ Usage:
         -a Base64 encoded object file
 
     Optional arguments:
+
+        -t <timeout> Set thread timeout (in seconds) - default 30 if not specified
+
         These are passed to the object file *in the order they are on the command line*.
 
         -i:123       A 32 bit integer (e.g. 123 passed to object file)
